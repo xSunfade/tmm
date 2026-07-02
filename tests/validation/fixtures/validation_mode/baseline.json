@@ -1,0 +1,91 @@
+{
+  "schemaVersion": "1.0.0",
+  "scenarioId": "baseline",
+  "seed": 1337,
+  "routes": {
+    "GET /api/plaid/items-with-accounts": {
+      "items": [
+        {
+          "item_id": "item_validation_1",
+          "institution_name": "Validation Bank",
+          "connected": true,
+          "item_status": { "status": "healthy" },
+          "accounts": [
+            {
+              "plaid_account_id": "acc_validation_1",
+              "name": "Checking",
+              "type": "depository",
+              "subtype": "checking",
+              "balance": 5234.12,
+              "currency_code": "USD",
+              "last_synced_at": "2026-01-10T00:00:00.000Z",
+              "current": true
+            }
+          ]
+        }
+      ]
+    },
+    "POST /api/plaid/transactions/sync": {
+      "ok": true,
+      "results": [
+        {
+          "item_id": "item_validation_1",
+          "added": 1,
+          "modified": 1,
+          "removed": 0,
+          "cursor": "cursor_validation_2"
+        }
+      ]
+    },
+    "GET /api/plaid/transactions/db": {
+      "transactions": [
+        {
+          "plaid_transaction_id": "tx_validation_1",
+          "account_id": "acc_validation_1",
+          "amount": 12.34,
+          "date": "2026-01-09",
+          "name": "Coffee"
+        }
+      ]
+    },
+    "GET /api/history/net-worth": {
+      "points": [
+        { "date": "2026-01-08", "value": 5100, "source": "plaid_live", "needsReview": false },
+        {
+          "date": "2026-01-09",
+          "value": 5234.12,
+          "source": "plaid_live",
+          "needsReview": true,
+          "checkpointValue": 5229.12,
+          "plaidValue": 5234.12
+        }
+      ],
+      "coverage": { "earliest": "2026-01-01", "latest": "2026-01-10" },
+      "as_of_rule": "end_of_day_utc"
+    },
+    "POST /api/history/net-worth": {
+      "points": [
+        { "date": "2026-01-08", "value": 5100, "source": "plaid_live", "needsReview": false },
+        {
+          "date": "2026-01-09",
+          "value": 5234.12,
+          "source": "plaid_live",
+          "needsReview": true,
+          "checkpointValue": 5229.12,
+          "plaidValue": 5234.12
+        }
+      ],
+      "coverage": { "earliest": "2026-01-01", "latest": "2026-01-10" },
+      "threshold": 250,
+      "as_of_rule": "end_of_day_utc"
+    },
+    "POST /api/history/reconciliation": {
+      "ok": true,
+      "override": {
+        "id": "override_validation_1",
+        "chosen_source": "plaid",
+        "point_date": "2026-01-09"
+      }
+    }
+  }
+}

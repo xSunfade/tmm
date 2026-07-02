@@ -1,0 +1,24 @@
+{
+  "name": "dedupe_added_modified_backfill",
+  "added": [
+    { "transaction_id": "tx_a", "amount": 10.0, "account_id": "acc_1" },
+    { "transaction_id": "tx_b", "amount": 20.0, "account_id": "acc_1" }
+  ],
+  "modified": [
+    { "transaction_id": "tx_b", "amount": 22.0, "account_id": "acc_1" },
+    { "transaction_id": "tx_c", "amount": 33.0, "account_id": "acc_2" }
+  ],
+  "backfill": [
+    { "transaction_id": "tx_c", "amount": 34.0, "account_id": "acc_2" },
+    { "transaction_id": "tx_d", "amount": 44.0, "account_id": "acc_2" }
+  ],
+  "expected": {
+    "transactionIds": ["tx_a", "tx_b", "tx_c", "tx_d"],
+    "amountById": {
+      "tx_a": 10.0,
+      "tx_b": 22.0,
+      "tx_c": 34.0,
+      "tx_d": 44.0
+    }
+  }
+}

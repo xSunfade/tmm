@@ -1,0 +1,13 @@
+{
+  "plugins": {
+    "stripe": {
+      "enabled": true
+    },
+    "supabase": {
+      "enabled": true
+    },
+    "vercel": {
+      "enabled": true
+    }
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "golden": {
+    "incomeMonthly": 5000,
+    "expenseMonthly": 3000,
+    "expectedFirstThreePoints": [2000, 4000, 6000],
+    "seededLedgerP50FirstThreePoints": [2000, 4000, 6000]
+  },
+  "connectedOverride": {
+    "manualOverrideExpected": 8000,
+    "connectedExpected": 10000
+  },
+  "frequency": {
+    "weeklyIncome": 1000,
+    "expectedFirstPoint": 4345
+  }
+}

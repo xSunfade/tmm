@@ -1,0 +1,44 @@
+<svg width="1920" height="1080" viewBox="0 0 1920 1080" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">TMM Splash Vortex Background</title>
+  <desc id="desc">Dark green cinematic vortex background with gold particles.</desc>
+  <defs>
+    <radialGradient id="core" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(1400 520) rotate(121) scale(830 790)">
+      <stop offset="0" stop-color="#FFF59D"/>
+      <stop offset="0.13" stop-color="#F6C453"/>
+      <stop offset="0.35" stop-color="#4FD08B"/>
+      <stop offset="0.62" stop-color="#0A2A20"/>
+      <stop offset="1" stop-color="#020B08"/>
+    </radialGradient>
+    <radialGradient id="leftFog" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(380 420) rotate(23) scale(900 780)">
+      <stop offset="0" stop-color="#1F7A51" stop-opacity="0.56"/>
+      <stop offset="1" stop-color="#04110D" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="blur" x="-200" y="-200" width="2320" height="1480" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="42"/>
+    </filter>
+  </defs>
+  <rect width="1920" height="1080" fill="#02100B"/>
+  <rect width="1920" height="1080" fill="url(#core)"/>
+  <rect width="1920" height="1080" fill="url(#leftFog)"/>
+  <g opacity="0.55" filter="url(#blur)">
+    <path d="M-60 682C238 768 525 743 822 641C1119 538 1325 359 1610 278C1712 249 1815 240 1972 251" stroke="#4A9E6E" stroke-width="42" stroke-linecap="round"/>
+    <path d="M-84 827C214 915 545 913 856 817C1168 720 1397 552 1712 493C1816 473 1915 473 2018 482" stroke="#F3BF4F" stroke-width="38" stroke-linecap="round"/>
+    <path d="M96 548C368 619 642 588 912 495C1182 402 1410 255 1688 197C1788 176 1887 173 1980 182" stroke="#8EDDAF" stroke-width="31" stroke-linecap="round"/>
+  </g>
+  <g opacity="0.68">
+    <circle cx="180" cy="224" r="2.4" fill="#F4C860"/>
+    <circle cx="250" cy="290" r="2.1" fill="#F4C860"/>
+    <circle cx="320" cy="338" r="1.9" fill="#F9E391"/>
+    <circle cx="1410" cy="486" r="3.5" fill="#FBE48C"/>
+    <circle cx="1472" cy="532" r="2.9" fill="#F8C64D"/>
+    <circle cx="1534" cy="585" r="2.3" fill="#F4B73E"/>
+    <circle cx="1658" cy="420" r="2.5" fill="#FBE48C"/>
+    <circle cx="1740" cy="470" r="2.1" fill="#F6CF65"/>
+    <circle cx="1810" cy="532" r="1.9" fill="#F8D975"/>
+    <circle cx="1338" cy="706" r="2.2" fill="#F4C860"/>
+    <circle cx="1440" cy="744" r="2.1" fill="#F6D980"/>
+    <circle cx="1528" cy="780" r="1.9" fill="#F4C860"/>
+    <circle cx="1606" cy="816" r="1.8" fill="#F7DC86"/>
+    <circle cx="1710" cy="844" r="1.7" fill="#F4C860"/>
+  </g>
+</svg>

@@ -1,0 +1,15 @@
+{
+  "ignore": [
+    "**/*.db",
+    "**/*.db-shm",
+    "**/*.db-wal",
+    "**/plaid_tokens.db",
+    "**/backend/data/**",
+    "**/backend/plaid_tokens.db",
+    "**/node_modules/**",
+    "**/.git/**"
+  ],
+  "watch": false
+}
+
+

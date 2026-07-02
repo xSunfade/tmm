@@ -1,0 +1,46 @@
+name: Validation Harness
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  validation:
+    runs-on: ubuntu-latest
+    env:
+      VALIDATION_MODE: "true"
+      RUN_DB_VALIDATION: "false"
+      RUN_PLAYWRIGHT_PARITY: "true"
+      PRODUCTION_GUARD: "true"
+      PLAID_ENV: "sandbox"
+      CHAOS_SEED: "1337"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install frontend dependencies
+        run: npm --prefix frontend ci
+
+      - name: Install backend dependencies
+        run: npm --prefix backend ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
+      - name: Run validation suites
+        run: npm run test:validation:ci
+
+      - name: Upload validation artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-artifacts
+          path: |
+            tests/validation/artifacts/**
+            tests/validation/*REPORT*.md
+            tests/validation/*TESTS*.md

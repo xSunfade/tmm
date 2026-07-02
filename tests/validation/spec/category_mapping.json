@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "1.0.0",
+  "mappings": [
+    {
+      "plaidPrimary": "INCOME",
+      "plaidDetailed": "INCOME_PAYROLL",
+      "tmmCategory": "salary",
+      "tmmNodeType": "income",
+      "signRule": "positive",
+      "priority": 10
+    },
+    {
+      "plaidPrimary": "TRANSFER_OUT",
+      "plaidDetailed": "TRANSFER_OUT_SAVINGS",
+      "tmmCategory": "transfer_out",
+      "tmmNodeType": "expense",
+      "signRule": "negative",
+      "priority": 20
+    },
+    {
+      "plaidPrimary": "TRANSFER_IN",
+      "plaidDetailed": "TRANSFER_IN_SAVINGS",
+      "tmmCategory": "transfer_in",
+      "tmmNodeType": "income",
+      "signRule": "positive",
+      "priority": 20
+    },
+    {
+      "plaidPrimary": "LOAN_PAYMENTS",
+      "plaidDetailed": "LOAN_PAYMENTS_CREDIT_CARD_PAYMENT",
+      "tmmCategory": "debt_payment",
+      "tmmNodeType": "debt",
+      "signRule": "negative",
+      "priority": 30
+    },
+    {
+      "plaidPrimary": "UNKNOWN",
+      "plaidDetailed": "UNKNOWN",
+      "tmmCategory": "unmapped",
+      "tmmNodeType": "unknown",
+      "signRule": "passthrough",
+      "priority": 999
+    }
+  ]
+}

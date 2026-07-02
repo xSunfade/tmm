@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Category Mapping",
+  "type": "object",
+  "required": ["schemaVersion", "mappings"],
+  "properties": {
+    "schemaVersion": { "type": "string" },
+    "mappings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "plaidPrimary",
+          "plaidDetailed",
+          "tmmCategory",
+          "tmmNodeType",
+          "signRule",
+          "priority"
+        ],
+        "properties": {
+          "plaidPrimary": { "type": "string" },
+          "plaidDetailed": { "type": "string" },
+          "tmmCategory": { "type": "string" },
+          "tmmNodeType": { "type": "string", "enum": ["income", "expense", "asset", "debt", "unknown"] },
+          "signRule": { "type": "string", "enum": ["positive", "negative", "passthrough"] },
+          "priority": { "type": "integer", "minimum": 0 }
+        }
+      }
+    }
+  }
+}

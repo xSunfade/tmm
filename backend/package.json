@@ -1,0 +1,32 @@
+{
+  "name": "tmm-plaid-backend",
+  "version": "1.0.0",
+  "description": "Backend API server for Plaid integration",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "init-db": "echo 'Database schema should be created in Supabase. See SUPABASE_SETUP.md for instructions.'",
+    "test": "node --test"
+  },
+  "keywords": [
+    "plaid",
+    "banking",
+    "api"
+  ],
+  "author": "",
+  "license": "ISC",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.90.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "plaid": "^21.0.0",
+    "stripe": "^20.3.1",
+    "zod": "^4.3.6"
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "name": "tmm-validation-root",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "test:unit": "npm --prefix backend test && npm --prefix frontend run test:simulation",
+    "test:integration": "npx tsx tests/validation/scenarios/plaid/injectable-workflow.test.ts && npx tsx tests/validation/scenarios/plaid/workflow-chaos-boundary.test.ts",
+    "test:e2e": "npx playwright test -c tests/validation/playwright.config.ts",
+    "test:validation:stripe": "npx tsx tests/validation/scenarios/stripe/stripe-upgrade-validation.test.ts",
+    "test:plaid:live": "npx tsx tests/validation/scenarios/plaid/live-webhook-sync.test.ts",
+    "test:stripe:get-jwt": "npx tsx tests/validation/scripts/get-stripe-test-jwt.ts",
+    "test:validation": "npx tsx tests/validation/run-validation.ts",
+    "test:validation:ci": "npx tsx tests/validation/run-validation.ts",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:backend": "cd backend && npm start",
+    "dev:local": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:tunnel": "ngrok http 3000",
+    "dev:all": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\" \"npm run dev:tunnel\""
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.90.1",
+    "@vercel/analytics": "^1.6.1",
+    "dotenv": "^17.2.3",
+    "plaid": "^21.0.0",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "concurrently": "^9.2.1",
+    "fast-check": "^3.23.2",
+    "tsx": "^4.21.0"
+  }
+}

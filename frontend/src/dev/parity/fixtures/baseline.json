@@ -1,0 +1,72 @@
+{
+  "name": "Baseline sample",
+  "runYears": 30,
+  "granularity": "monthly",
+  "plan": {
+    "schemaVersion": "2.0",
+    "alternatives": {
+      "Baseline": {
+        "income": [
+          {
+            "uuid": "income_1",
+            "name": "Salary",
+            "amount": 74000,
+            "freq": "biweekly",
+            "start": "2025-01-01",
+            "raise": 3
+          }
+        ],
+        "expense": [
+          {
+            "uuid": "expense_1",
+            "name": "Rent",
+            "amount": 1800,
+            "freq": "monthly",
+            "start": "2025-01-01",
+            "infl": 2.5
+          }
+        ],
+        "asset": [
+          {
+            "uuid": "asset_1",
+            "mode": "APY",
+            "name": "HYSA",
+            "group": "Cash",
+            "value": 11000,
+            "apy": 4.8,
+            "recurAmt": 0,
+            "recurFreq": "monthly"
+          }
+        ],
+        "debt": [
+          {
+            "uuid": "debt_1",
+            "name": "Student Loan",
+            "bal": 12000,
+            "apr": 5.5,
+            "pmt": 200,
+            "freq": "monthly",
+            "start": "2025-01-01"
+          }
+        ]
+      }
+    },
+    "activeAlt": "Baseline",
+    "altChartEnabled": { "Baseline": true },
+    "altColors": {},
+    "assumptions": { "inflation": 2.5, "start": "2025-01-01", "finnhubKey": "" },
+    "lastRun": null,
+    "lastSaved": null,
+    "checkpoints": {},
+    "checkpointSettings": {
+      "autoCreateMonthly": true,
+      "lastCheckpointDate": null,
+      "driftThreshold": 0.15
+    },
+    "ignoredDriftWarnings": {},
+    "augments": [],
+    "goals": {},
+    "pipeline": { "byAlt": { "Baseline": { "edges": [], "layout": {} } } },
+    "plaidConfig": { "clientId": "", "environment": "sandbox", "backendApiUrl": "https://tmm.finance", "enabled": false }
+  }
+}

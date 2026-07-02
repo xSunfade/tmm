@@ -1,0 +1,47 @@
+{
+  "slices": ["T0", "T+7d", "T+30d", "T+90d", "T+120d", "T+180d"],
+  "personas": [
+    {
+      "id": "plus_long_absence",
+      "description": "User absent while sync continues and value drifts upward",
+      "timeline": [
+        { "slice": "T0", "status": "connected", "connectedAccountId": "acc_old", "autoValue": 10000, "manualValue": 9000, "overrideActive": false, "expectedEffectiveValue": 10000 },
+        { "slice": "T+7d", "status": "connected", "connectedAccountId": "acc_old", "autoValue": 10120, "manualValue": 9000, "overrideActive": false, "expectedEffectiveValue": 10120 },
+        { "slice": "T+30d", "status": "connected", "connectedAccountId": "acc_old", "autoValue": 10820, "manualValue": 9000, "overrideActive": false, "expectedEffectiveValue": 10820 },
+        { "slice": "T+90d", "status": "connected", "connectedAccountId": "acc_old", "autoValue": 12050, "manualValue": 9000, "overrideActive": false, "expectedEffectiveValue": 12050 },
+        { "slice": "T+120d", "status": "connected", "connectedAccountId": "acc_old", "autoValue": 12300, "manualValue": 9000, "overrideActive": false, "expectedEffectiveValue": 12300 },
+        { "slice": "T+180d", "status": "connected", "connectedAccountId": "acc_old", "autoValue": 13200, "manualValue": 9000, "overrideActive": false, "expectedEffectiveValue": 13200 }
+      ]
+    },
+    {
+      "id": "plus_disconnect_then_return",
+      "description": "Disconnect degrades to archived/manual then reconnect remaps account id",
+      "timeline": [
+        { "slice": "T0", "status": "connected", "connectedAccountId": "acc_old", "autoValue": 15000, "manualValue": 14000, "overrideActive": false, "expectedEffectiveValue": 15000 },
+        { "slice": "T+7d", "status": "connected", "connectedAccountId": "acc_old", "autoValue": 15100, "manualValue": 14000, "overrideActive": false, "expectedEffectiveValue": 15100 },
+        { "slice": "T+30d", "status": "disconnected", "connectedAccountId": null, "autoValue": null, "manualValue": 15100, "overrideActive": false, "expectedEffectiveValue": 15100 },
+        { "slice": "T+90d", "status": "disconnected", "connectedAccountId": null, "autoValue": null, "manualValue": 15100, "overrideActive": false, "expectedEffectiveValue": 15100 },
+        { "slice": "T+120d", "status": "connected", "connectedAccountId": "acc_new", "autoValue": 15550, "manualValue": 15100, "overrideActive": false, "expectedEffectiveValue": 15550 },
+        { "slice": "T+180d", "status": "connected", "connectedAccountId": "acc_new", "autoValue": 16200, "manualValue": 15100, "overrideActive": false, "expectedEffectiveValue": 16200 }
+      ],
+      "expectedReconnectMapping": {
+        "acc_old": "acc_new"
+      }
+    },
+    {
+      "id": "plus_override_stability",
+      "description": "Manual override persists during connection changes until reverted",
+      "timeline": [
+        { "slice": "T0", "status": "connected", "connectedAccountId": "acc_a", "autoValue": 9000, "manualValue": 8500, "overrideActive": true, "expectedEffectiveValue": 8500 },
+        { "slice": "T+7d", "status": "connected", "connectedAccountId": "acc_a", "autoValue": 9100, "manualValue": 8500, "overrideActive": true, "expectedEffectiveValue": 8500 },
+        { "slice": "T+30d", "status": "connected", "connectedAccountId": "acc_a", "autoValue": 9300, "manualValue": 8500, "overrideActive": true, "expectedEffectiveValue": 8500 },
+        { "slice": "T+90d", "status": "disconnected", "connectedAccountId": null, "autoValue": null, "manualValue": 8500, "overrideActive": true, "expectedEffectiveValue": 8500 },
+        { "slice": "T+120d", "status": "connected", "connectedAccountId": "acc_b", "autoValue": 9800, "manualValue": 8500, "overrideActive": true, "expectedEffectiveValue": 8500 },
+        { "slice": "T+180d", "status": "connected", "connectedAccountId": "acc_b", "autoValue": 10100, "manualValue": 8500, "overrideActive": false, "expectedEffectiveValue": 10100 }
+      ],
+      "expectedReconnectMapping": {
+        "acc_a": "acc_b"
+      }
+    }
+  ]
+}

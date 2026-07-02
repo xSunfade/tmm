@@ -1,0 +1,2 @@
+risk_id,title,description,owner,likelihood_1_5,impact_1_5,score,status,mitigation,due_date,last_reviewed,notes
+RISK-001,Example risk,Describe threat scenario and exposure,Security Lead,3,4,12,open,Describe mitigation plan,YYYY-MM-DD,YYYY-MM-DD,

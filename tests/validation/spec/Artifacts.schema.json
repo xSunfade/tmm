@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Validation Artifact Envelope",
+  "type": "object",
+  "required": ["schemaVersion", "artifactType", "generatedAt", "seed", "payload"],
+  "properties": {
+    "schemaVersion": { "type": "string" },
+    "artifactType": {
+      "type": "string",
+      "enum": [
+        "plaid_final_state_snapshot",
+        "plaid_state_diff",
+        "ledger_snapshot",
+        "ui_parity_expected",
+        "ui_parity_observed",
+        "ui_parity_diff",
+        "drift_forensics",
+        "reconciliation_events"
+      ]
+    },
+    "generatedAt": { "type": "string" },
+    "seed": { "type": "integer" },
+    "payload": { "type": "object" }
+  }
+}

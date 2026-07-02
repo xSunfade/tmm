@@ -1,0 +1,46 @@
+{
+  "name": "mutation_during_pagination_retry",
+  "initialCursor": "cursor_A",
+  "maxMutationRetries": 1,
+  "attempts": [
+    [
+      {
+        "type": "error",
+        "code": "TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION"
+      }
+    ],
+    [
+      {
+        "type": "page",
+        "cursor": "cursor_A",
+        "data": {
+          "added": [
+            { "transaction_id": "tx_1", "account_id": "acc_1", "amount": 20.11 },
+            { "transaction_id": "tx_2", "account_id": "acc_1", "amount": 15.19 }
+          ],
+          "modified": [],
+          "removed": [],
+          "next_cursor": "cursor_B",
+          "has_more": true
+        }
+      },
+      {
+        "type": "page",
+        "cursor": "cursor_B",
+        "data": {
+          "added": [],
+          "modified": [{ "transaction_id": "tx_2", "account_id": "acc_1", "amount": 14.0 }],
+          "removed": [{ "transaction_id": "tx_legacy" }],
+          "next_cursor": "cursor_C",
+          "has_more": false
+        }
+      }
+    ]
+  ],
+  "expected": {
+    "nextCursor": "cursor_C",
+    "addedCount": 2,
+    "modifiedCount": 1,
+    "removedCount": 1
+  }
+}

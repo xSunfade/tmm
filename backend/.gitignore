@@ -1,0 +1,11 @@
+node_modules/
+.env
+*.log
+.DS_Store
+dist/
+build/
+
+# Supabase migrations are tracked in git
+# .env files should never be committed
+
+.vercel

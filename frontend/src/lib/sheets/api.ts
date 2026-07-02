@@ -1,7 +1,9 @@
 import { getSupabaseClient } from '../supabaseClient';
 
 const GET_SESSION_TIMEOUT_MS = 2500;
-const SHEETS_REQUEST_TIMEOUT_MS = 30000;
+// Must exceed the backend's worst-case Sheets retry/backoff (~15s) plus one request so that a
+// legitimately retried write completes rather than being aborted by the client.
+const SHEETS_REQUEST_TIMEOUT_MS = 45000;
 let cachedAccessTokenForSheets: string | null = null;
 
 function getApiBaseUrl(): string {
@@ -197,6 +199,21 @@ export async function batchUpdateSheets(
     method: 'POST',
     body: JSON.stringify({ spreadsheetId, operations })
   }, sessionToken) as Promise<{ ok: boolean }>;
+}
+
+export type BatchWriteEntry = { range: string; values: unknown[][] };
+
+/** Write multiple ranges in a single Sheets write request (values:batchUpdate). */
+export async function batchWriteSheets(
+  spreadsheetId: string,
+  data: BatchWriteEntry[],
+  valueInputOption: 'USER_ENTERED' | 'RAW' = 'USER_ENTERED',
+  sessionToken?: string | null
+): Promise<{ totalUpdatedCells: number }> {
+  return authorizedFetch('/api/google/sheets/valuesBatchUpdate', {
+    method: 'POST',
+    body: JSON.stringify({ spreadsheetId, data, valueInputOption })
+  }, sessionToken) as Promise<{ totalUpdatedCells: number }>;
 }
 
 export async function appendSheet(

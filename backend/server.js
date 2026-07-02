@@ -1512,12 +1512,62 @@ async function getValidGoogleTokens(userId) {
 }
 
 const GOOGLE_SHEETS_FETCH_TIMEOUT_MS = 25000;
+// Google Sheets allows 60 write requests/min/user. On 429/503 the request was NOT
+// processed, so retrying with backoff is safe (no risk of duplicate appends) and lets
+// large syncs succeed as the per-minute quota refills.
+// Worst-case cumulative backoff = 1000+2000+4000+8000 = 15s (plus small jitter). Kept below
+// the frontend Sheets request timeout so a backing-off retry can finish instead of being aborted.
+const GOOGLE_SHEETS_MAX_RETRIES = 4;
+const GOOGLE_SHEETS_RETRY_BASE_MS = 1000;
+const GOOGLE_SHEETS_RETRY_MAX_MS = 8000;
+const GOOGLE_SHEETS_RETRYABLE_STATUS = new Set([429, 503]);
 
-function googleSheetsFetch(url, options = {}) {
-  return fetch(url, {
-    ...options,
-    signal: AbortSignal.timeout(GOOGLE_SHEETS_FETCH_TIMEOUT_MS)
-  });
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Parse a Retry-After header (delta-seconds or HTTP-date) into milliseconds, or null. */
+function parseRetryAfterMs(headerValue) {
+  if (!headerValue) return null;
+  const seconds = Number(headerValue);
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
+  const dateMs = Date.parse(headerValue);
+  if (Number.isFinite(dateMs)) return Math.max(0, dateMs - Date.now());
+  return null;
+}
+
+async function googleSheetsFetch(url, options = {}) {
+  let attempt = 0;
+  while (true) {
+    const response = await fetch(url, {
+      ...options,
+      signal: AbortSignal.timeout(GOOGLE_SHEETS_FETCH_TIMEOUT_MS)
+    });
+    if (!GOOGLE_SHEETS_RETRYABLE_STATUS.has(response.status) || attempt >= GOOGLE_SHEETS_MAX_RETRIES) {
+      return response;
+    }
+    const retryAfterMs = parseRetryAfterMs(response.headers.get('retry-after'));
+    const backoffMs = Math.min(
+      GOOGLE_SHEETS_RETRY_MAX_MS,
+      GOOGLE_SHEETS_RETRY_BASE_MS * 2 ** attempt
+    );
+    const jitterMs = Math.floor(Math.random() * 250);
+    const waitMs = (retryAfterMs != null ? retryAfterMs : backoffMs) + jitterMs;
+    // Drain the body so the underlying connection can be reused.
+    try {
+      await response.arrayBuffer();
+    } catch {
+      // Ignore drain failures; we are discarding this response anyway.
+    }
+    console.warn(JSON.stringify({
+      type: 'google_sheets_retry',
+      status: response.status,
+      attempt: attempt + 1,
+      waitMs
+    }));
+    await sleep(waitMs);
+    attempt += 1;
+  }
 }
 
 function getFallbackAppOrigin(req) {
@@ -2155,6 +2205,47 @@ app.post('/api/google/sheets/clear', requireAuth, async (req, res, next) => {
       throw new Error(`Sheets clear failed: ${error}`);
     }
     res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Google Sheets - values batchUpdate (multiple ranges written in ONE write request).
+// Used to collapse per-row entity updates into a single quota-costing call.
+app.post('/api/google/sheets/valuesBatchUpdate', requireAuth, async (req, res, next) => {
+  try {
+    const { spreadsheetId, data, valueInputOption } = req.body;
+    if (!spreadsheetId || !Array.isArray(data)) {
+      return res.status(400).json({ error: 'spreadsheetId and data array are required' });
+    }
+    if (data.length === 0) {
+      return res.json({ totalUpdatedCells: 0 });
+    }
+    for (const entry of data) {
+      if (!entry || typeof entry.range !== 'string' || !Array.isArray(entry.values)) {
+        return res.status(400).json({ error: 'Each data entry requires a string range and values array' });
+      }
+    }
+    const tokens = await getValidGoogleTokens(req.userId);
+    if (!tokens) return res.status(400).json({ error: 'Google not connected' });
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`;
+    const response = await googleSheetsFetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${tokens.access_token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        valueInputOption: valueInputOption || 'USER_ENTERED',
+        data: data.map((entry) => ({ range: entry.range, values: entry.values }))
+      })
+    });
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Sheets valuesBatchUpdate failed: ${error}`);
+    }
+    const result = await response.json();
+    res.json({ totalUpdatedCells: result.totalUpdatedCells ?? 0 });
   } catch (err) {
     next(err);
   }

@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "test:unit": "npm --prefix backend test && npm --prefix frontend run test:simulation",
+    "test:unit": "npm --prefix backend test && npm --prefix frontend run test:simulation && npx tsx tests/unit/sheets-diff.test.ts",
     "test:integration": "npx tsx tests/validation/scenarios/plaid/injectable-workflow.test.ts && npx tsx tests/validation/scenarios/plaid/workflow-chaos-boundary.test.ts",
     "test:e2e": "npx playwright test -c tests/validation/playwright.config.ts",
     "test:validation:stripe": "npx tsx tests/validation/scenarios/stripe/stripe-upgrade-validation.test.ts",
@@ -30,5 +30,8 @@
     "concurrently": "^9.2.1",
     "fast-check": "^3.23.2",
     "tsx": "^4.21.0"
+  },
+  "allowScripts": {
+    "esbuild@0.27.3": true
   }
 }

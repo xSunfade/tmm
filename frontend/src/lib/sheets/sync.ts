@@ -1,5 +1,5 @@
 import type { PlanState, Alternative, IncomeRow, ExpenseRow, Frequency } from '../plan/types';
-import { writeSheet, readSheet, clearSheetRange, batchUpdateSheets, appendSheet, getSheetsSessionToken, ensureSpreadsheetTabs } from './api';
+import { writeSheet, readSheet, clearSheetRange, batchUpdateSheets, batchWriteSheets, appendSheet, getSheetsSessionToken, ensureSpreadsheetTabs } from './api';
 import { DEFAULT_PLAN_STATE } from '../plan/defaults';
 import { migratePlan } from '../plan/migrations';
 import { ensureEntityUuids } from '../plan/normalize';
@@ -88,6 +88,13 @@ function columnLetter(index: number): string {
   return String.fromCharCode(65 + index);
 }
 
+export interface SheetEntityRow {
+  rowIndex: number;
+  uuid: string;
+  /** Full existing row values (columns A..lastCol) as returned by Sheets. */
+  values: unknown[];
+}
+
 export interface EntitySheetDiff {
   toDelete: number[];
   toUpdate: { rowIndex: number; values: unknown[] }[];
@@ -95,57 +102,104 @@ export interface EntitySheetDiff {
 }
 
 /**
- * Read UUID column (A1:A{MAX_DATA_ROW}) and parse to row index + uuid.
+ * Read an entity sheet (A1:{lastCol}{MAX_DATA_ROW}) in a single request and parse rows.
+ * Returns the header row and, for each data row, its row index, UUID, and full values.
  * Row 1 must be header with "UUID" in column A (Guardrail 10: abort if not).
  * Data rows start at row 2. Blank/malformed UUID -> orphan (included in toDelete by diff).
  */
-async function readUuidColumn(
+async function readEntitySheet(
   spreadsheetId: string,
   sheetName: string,
+  lastCol: string,
   sessionToken?: string | null
 ): Promise<{
-  sheetRows: { rowIndex: number; uuid: string }[];
+  sheetRows: SheetEntityRow[];
   hasUuidHeader: boolean;
   rowCount: number;
   headerCell: string | null;
+  existingHeaders: string[];
 }> {
-  const range = `${sheetName}!A1:A${MAX_DATA_ROW}`;
+  const range = `${sheetName}!A1:${lastCol}${MAX_DATA_ROW}`;
   const result = await readSheet(spreadsheetId, range, sessionToken);
   const rows = (result.values ?? []) as unknown[][];
   const headerCell = rows[0]?.[0];
   const hasUuidHeader = headerCell != null && String(headerCell).trim() === 'UUID';
+  const existingHeaders = (rows[0] ?? []).map((header) => String(header).trim());
   if (!hasUuidHeader) {
     return {
       sheetRows: [],
       hasUuidHeader: false,
       rowCount: rows.length,
-      headerCell: headerCell == null ? null : String(headerCell)
+      headerCell: headerCell == null ? null : String(headerCell),
+      existingHeaders
     };
   }
-  const out: { rowIndex: number; uuid: string }[] = [];
+  const out: SheetEntityRow[] = [];
   for (let i = 1; i < rows.length; i++) {
     const rowIndex = i + 1;
     if (rowIndex > MAX_DATA_ROW) break;
-    const cell = rows[i]?.[0];
+    const row = (rows[i] ?? []) as unknown[];
+    const cell = row[0];
     const uuid = cell != null ? String(cell).trim() : '';
-    out.push({ rowIndex, uuid });
+    out.push({ rowIndex, uuid, values: row });
   }
   return {
     sheetRows: out,
     hasUuidHeader: true,
     rowCount: rows.length,
-    headerCell: headerCell == null ? null : String(headerCell)
+    headerCell: headerCell == null ? null : String(headerCell),
+    existingHeaders
   };
+}
+
+/**
+ * Parse a cell to a number, tolerating thousands separators, surrounding spaces, and a
+ * leading "$". Returns null when the cell is not an unambiguous plain number so the caller
+ * falls back to a strict string comparison (never a false "equal").
+ */
+function toNumberOrNull(raw: string): number | null {
+  if (raw === '') return null;
+  const cleaned = raw.replace(/[$,\s]/g, '');
+  if (cleaned === '' || !/^-?\d*\.?\d+$/.test(cleaned)) return null;
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Conservative cell equality used to decide whether a row is unchanged.
+ * Returns true ONLY when we are confident the two values are identical (exact string match,
+ * or both parse to the same plain number). Any ambiguity returns false, so a genuine edit is
+ * never mistaken for "unchanged" — worst case is a harmless redundant write.
+ */
+export function cellsEqual(a: unknown, b: unknown): boolean {
+  const sa = a == null ? '' : String(a).trim();
+  const sb = b == null ? '' : String(b).trim();
+  if (sa === sb) return true;
+  const na = toNumberOrNull(sa);
+  const nb = toNumberOrNull(sb);
+  if (na != null && nb != null) return na === nb;
+  return false;
+}
+
+/** True when every managed column (0..columnCount-1) of the two rows is confidently equal. */
+export function entityRowsEqual(existing: unknown[], next: unknown[], columnCount: number): boolean {
+  for (let i = 0; i < columnCount; i++) {
+    if (!cellsEqual(existing?.[i], next?.[i])) return false;
+  }
+  return true;
 }
 
 /**
  * Diff sheet UUIDs vs TMM. UUID only — no heuristics.
  * toDelete: row indices (descending), never row 1; never outside 2..MAX_DATA_ROW.
  * Duplicate UUIDs in sheet: keep first, delete rest.
+ * When `columnCount` is provided, matched rows whose managed columns already equal the TMM
+ * values are skipped (not added to toUpdate) to minimize write volume.
  */
 export function diffEntitySheet(
-  sheetRows: { rowIndex: number; uuid: string }[],
-  tmmValues: unknown[][]
+  sheetRows: { rowIndex: number; uuid: string; values?: unknown[] }[],
+  tmmValues: unknown[][],
+  columnCount?: number
 ): EntitySheetDiff {
   const tmmRows = tmmValues.slice(1);
   const tmmUuidSet = new Set(tmmRows.map((r) => String(r?.[0] ?? '').trim()));
@@ -159,7 +213,7 @@ export function diffEntitySheet(
   const toUpdate: { rowIndex: number; values: unknown[] }[] = [];
   const seenUuids = new Set<string>();
 
-  for (const { rowIndex, uuid } of sheetRows) {
+  for (const { rowIndex, uuid, values } of sheetRows) {
     if (rowIndex < 2 || rowIndex > MAX_DATA_ROW) continue;
     if (!isValidUuid(uuid)) {
       toDelete.push(rowIndex);
@@ -175,7 +229,17 @@ export function diffEntitySheet(
     }
     seenUuids.add(uuid);
     const rowValues = tmmMap.get(uuid);
-    if (rowValues) toUpdate.push({ rowIndex, values: rowValues });
+    if (!rowValues) continue;
+    // Skip rows that already match (only when we have both the existing values and a column
+    // count to compare); otherwise fall back to always updating (previous behavior).
+    if (
+      columnCount != null &&
+      Array.isArray(values) &&
+      entityRowsEqual(values, rowValues, columnCount)
+    ) {
+      continue;
+    }
+    toUpdate.push({ rowIndex, values: rowValues });
   }
 
   const toAdd = tmmRows.filter((r) => {
@@ -188,7 +252,11 @@ export function diffEntitySheet(
 }
 
 /**
- * Apply entity sheet sync: delete (bottom-up), update, append.
+ * Apply entity sheet sync in order: update (batched) -> delete (bottom-up) -> append.
+ * Updates run before deletes because deleting rows renumbers everything below them; since
+ * toUpdate/toDelete are disjoint UUID sets, writing correct content first (at the pre-delete
+ * indices) then deleting orphans leaves every updated row intact wherever it lands.
+ * All toUpdate rows are written in a SINGLE values:batchUpdate request (one write quota unit).
  * Guardrail 6: row 1 is immutable; every delete row index must be >= 2. Fails loud on any API error.
  */
 async function applyEntitySheetSync(
@@ -203,15 +271,24 @@ async function applyEntitySheetSync(
     throw new Error(`Sheet sync: header row (1) is immutable; delete indices must be >= 2 (got ${JSON.stringify(bad)})`);
   }
 
+  const lastCol = columnLetter(lastColumnIndex);
+
+  if (diff.toUpdate.length > 0) {
+    await batchWriteSheets(
+      spreadsheetId,
+      diff.toUpdate.map(({ rowIndex, values }) => ({
+        range: `${sheetName}!A${rowIndex}:${lastCol}${rowIndex}`,
+        values: [values]
+      })),
+      'USER_ENTERED',
+      sessionToken
+    );
+  }
+
   if (diff.toDelete.length > 0) {
     await batchUpdateSheets(spreadsheetId, [
       { type: 'deleteRows', sheetName, rowIndices: diff.toDelete }
     ], sessionToken);
-  }
-
-  const lastCol = columnLetter(lastColumnIndex);
-  for (const { rowIndex, values } of diff.toUpdate) {
-    await writeSheet(spreadsheetId, `${sheetName}!A${rowIndex}:${lastCol}${rowIndex}`, [values], sessionToken);
   }
 
   if (diff.toAdd.length > 0) {
@@ -521,18 +598,28 @@ export async function syncPlanToSheets(
     }
 
     if (syncType === 'entity-uuid') {
-      let uuidRead:
-        | { sheetRows: { rowIndex: number; uuid: string }[]; hasUuidHeader: boolean; rowCount: number; headerCell: string | null }
+      const expectedHeaders = (values[0] ?? []).map((header) => String(header).trim());
+      const lastColIndex = Math.min(25, Math.max(0, expectedHeaders.length - 1));
+      const lastCol = columnLetter(lastColIndex);
+
+      let entityRead:
+        | {
+            sheetRows: SheetEntityRow[];
+            hasUuidHeader: boolean;
+            rowCount: number;
+            headerCell: string | null;
+            existingHeaders: string[];
+          }
         | null = null;
       try {
-        uuidRead = await readUuidColumn(spreadsheetId, sheetName, sessionToken);
+        entityRead = await readEntitySheet(spreadsheetId, sheetName, lastCol, sessionToken);
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         errors.push(`${sheetName}: ${msg}`);
         return { ok: false, queued: 0, errors };
       }
-      if (!uuidRead.hasUuidHeader) {
-        if (uuidRead.rowCount === 0) {
+      if (!entityRead.hasUuidHeader) {
+        if (entityRead.rowCount === 0) {
           try {
             const result = await writeWithQueue(spreadsheetId, `${sheetName}!A1`, values, sessionToken);
             if (result.queued) {
@@ -551,20 +638,7 @@ export async function syncPlanToSheets(
         return { ok: false, queued: 0, errors };
       }
 
-      const expectedHeaders = (values[0] ?? []).map((header) => String(header).trim());
-      const lastColIndex = Math.min(25, Math.max(0, expectedHeaders.length - 1));
-      const lastCol = columnLetter(lastColIndex);
-      let existingHeaders: string[] = [];
-      try {
-        const headerRead = await readSheet(spreadsheetId, `${sheetName}!A1:${lastCol}1`, sessionToken);
-        existingHeaders = (headerRead.values?.[0] ?? []).map((header: unknown) => String(header).trim());
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        errors.push(`${sheetName}: ${msg}`);
-        return { ok: false, queued: 0, errors };
-      }
-
-      if (!entityHeadersMatch(existingHeaders, expectedHeaders)) {
+      if (!entityHeadersMatch(entityRead.existingHeaders, expectedHeaders)) {
         try {
           const result = await writeWithQueue(spreadsheetId, `${sheetName}!A1`, values, sessionToken);
           if (result.queued) {
@@ -580,9 +654,9 @@ export async function syncPlanToSheets(
         continue;
       }
 
-      const sheetRows = uuidRead.sheetRows;
+      const sheetRows = entityRead.sheetRows;
       const rowCountBefore = 1 + sheetRows.length;
-      const diff = diffEntitySheet(sheetRows, values as unknown[][]);
+      const diff = diffEntitySheet(sheetRows, values as unknown[][], expectedHeaders.length);
       try {
         await applyEntitySheetSync(spreadsheetId, sheetName, diff, lastColIndex, sessionToken);
       } catch (e) {
@@ -654,7 +728,9 @@ export type SyncPlanResult =
   | { ok: true }
   | { ok: false; queued: number; errors: string[] };
 
-const WRITE_TIMEOUT_MS = 25000;
+// Aligned above the backend's worst-case retry/backoff window so a retried write is not
+// prematurely queued (see SHEETS_REQUEST_TIMEOUT_MS in api.ts).
+const WRITE_TIMEOUT_MS = 40000;
 
 async function writeWithQueue(
   spreadsheetId: string,

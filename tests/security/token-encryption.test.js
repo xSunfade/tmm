@@ -1,57 +1,31 @@
 // Token Encryption Test
-// Verifies that tokens are properly encrypted before storage
+// Verifies the REAL encrypt/decrypt implementation in backend/tokenStore.js
+// (previously tested a local copy of the functions, which could drift from
+// the code actually protecting Plaid access tokens).
 
 import crypto from 'crypto';
 
-// Simulate the encryption functions from tokenStore.js
-const ALGORITHM = 'aes-256-gcm';
+// Must be set before importing tokenStore.js: the module reads the key at
+// import time and per call, and dev mode without a key generates a random
+// key per call (round-trips would fail spuriously).
+const TEST_KEY = crypto.randomBytes(32).toString('hex');
+process.env.TOKEN_ENCRYPTION_KEY = TEST_KEY;
 
-function encrypt(text, key) {
-  const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipheriv(ALGORITHM, Buffer.from(key, 'hex'), iv);
-  
-  let encrypted = cipher.update(text, 'utf8', 'hex');
-  encrypted += cipher.final('hex');
-  
-  const authTag = cipher.getAuthTag();
-  
-  return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted}`;
-}
-
-function decrypt(encryptedText, key) {
-  const parts = encryptedText.split(':');
-  if (parts.length !== 3) {
-    throw new Error('Invalid encrypted token format');
-  }
-  
-  const iv = Buffer.from(parts[0], 'hex');
-  const authTag = Buffer.from(parts[1], 'hex');
-  const encrypted = parts[2];
-  
-  const decipher = crypto.createDecipheriv(ALGORITHM, Buffer.from(key, 'hex'), iv);
-  decipher.setAuthTag(authTag);
-  
-  let decrypted = decipher.update(encrypted, 'hex', 'utf8');
-  decrypted += decipher.final('utf8');
-  
-  return decrypted;
-}
+const { encrypt, decrypt } = await import('../../backend/tokenStore.js');
 
 function testTokenEncryption() {
-  console.log('🧪 Testing token encryption...\n');
-  
-  // Generate a test key (64 hex characters = 32 bytes)
-  const testKey = crypto.randomBytes(32).toString('hex');
+  console.log('🧪 Testing token encryption (real backend/tokenStore.js)...\n');
+
   const testToken = 'test-plaid-access-token-12345';
-  
+
   let passed = 0;
   let failed = 0;
-  
+
   // Test 1: Encryption format
   try {
-    const encrypted = encrypt(testToken, testKey);
+    const encrypted = encrypt(testToken);
     const parts = encrypted.split(':');
-    
+
     if (parts.length === 3) {
       console.log('✅ Encryption format correct (3 parts: iv:authTag:encrypted)');
       passed++;
@@ -63,12 +37,12 @@ function testTokenEncryption() {
     console.log(`❌ Encryption failed: ${err.message}`);
     failed++;
   }
-  
-  // Test 2: Decryption
+
+  // Test 2: Decryption round-trip
   try {
-    const encrypted = encrypt(testToken, testKey);
-    const decrypted = decrypt(encrypted, testKey);
-    
+    const encrypted = encrypt(testToken);
+    const decrypted = decrypt(encrypted);
+
     if (decrypted === testToken) {
       console.log('✅ Decryption works correctly');
       passed++;
@@ -80,11 +54,11 @@ function testTokenEncryption() {
     console.log(`❌ Decryption failed: ${err.message}`);
     failed++;
   }
-  
-  // Test 3: Encrypted value is different from original
+
+  // Test 3: Encrypted value does not leak the original token
   try {
-    const encrypted = encrypt(testToken, testKey);
-    
+    const encrypted = encrypt(testToken);
+
     if (encrypted !== testToken && !encrypted.includes(testToken)) {
       console.log('✅ Encrypted value does not contain original token');
       passed++;
@@ -96,29 +70,27 @@ function testTokenEncryption() {
     console.log(`❌ Encryption test failed: ${err.message}`);
     failed++;
   }
-  
-  // Test 4: Different keys produce different encrypted values
+
+  // Test 4: Random IV — same input encrypts differently each time
   try {
-    const key1 = crypto.randomBytes(32).toString('hex');
-    const key2 = crypto.randomBytes(32).toString('hex');
-    const encrypted1 = encrypt(testToken, key1);
-    const encrypted2 = encrypt(testToken, key2);
-    
+    const encrypted1 = encrypt(testToken);
+    const encrypted2 = encrypt(testToken);
+
     if (encrypted1 !== encrypted2) {
-      console.log('✅ Different keys produce different encrypted values');
+      console.log('✅ Same input produces different ciphertext (random IV)');
       passed++;
     } else {
-      console.log('❌ Different keys produce same encrypted value (security risk!)');
+      console.log('❌ Same input produces identical ciphertext (IV reuse risk!)');
       failed++;
     }
   } catch (err) {
-    console.log(`❌ Key variation test failed: ${err.message}`);
+    console.log(`❌ IV variation test failed: ${err.message}`);
     failed++;
   }
-  
-  // Test 5: Invalid encrypted format handling
+
+  // Test 5: Invalid encrypted format is rejected
   try {
-    decrypt('invalid:format', testKey);
+    decrypt('invalid:format');
     console.log('❌ Decryption should fail on invalid format');
     failed++;
   } catch (err) {
@@ -130,9 +102,25 @@ function testTokenEncryption() {
       failed++;
     }
   }
-  
+
+  // Test 6: Tampered ciphertext fails auth (GCM integrity)
+  try {
+    const encrypted = encrypt(testToken);
+    const parts = encrypted.split(':');
+    // Flip a hex digit in the ciphertext body
+    const body = parts[2];
+    const tamperedChar = body[0] === 'a' ? 'b' : 'a';
+    const tampered = `${parts[0]}:${parts[1]}:${tamperedChar}${body.slice(1)}`;
+    decrypt(tampered);
+    console.log('❌ Tampered ciphertext should fail authentication');
+    failed++;
+  } catch (err) {
+    console.log('✅ Tampered ciphertext rejected (GCM auth tag verified)');
+    passed++;
+  }
+
   console.log(`\n📊 Results: ${passed} passed, ${failed} failed`);
-  
+
   if (failed > 0) {
     console.log('\n❌ Some tests failed. Encryption implementation may need fixes.');
     process.exit(1);

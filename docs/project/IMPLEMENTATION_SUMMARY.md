@@ -1,5 +1,7 @@
 # TMM Audit Implementation Summary
 
+> **⚠️ STALE (marked 2026-07-03, Phase 0.7).** Cites file paths that have since moved and reflects an older audit cycle. Kept for historical context. Current source of truth: `docs/project-audit/` and `project-roadmap/`.
+
 This document summarizes the implementation of the TMM Full-Stack Audit & Verification Plan.
 
 ## Completed Items

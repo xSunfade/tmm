@@ -1,5 +1,7 @@
 # TMM Test Suite
 
+> **⚠️ STALE (marked 2026-07-03, Phase 0.7).** This overview omits roughly half of the current test tree (`tests/validation/` harness, unit suites, e2e specs). Until it is rewritten, treat `docs/project-audit/testing-strategy.md` and the root `package.json` test scripts as the source of truth.
+
 This directory contains test suites for the TMM full-stack audit and verification.
 
 ## Directory Structure

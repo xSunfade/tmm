@@ -112,29 +112,3 @@ export async function requireTmmPlus(req, res, next) {
     });
   }
 }
-
-/**
- * Optional auth middleware - attaches user if token is present, but doesn't require it
- * Useful for routes that work with or without authentication
- */
-export async function optionalAuth(req, res, next) {
-  try {
-    const authHeader = req.headers.authorization;
-    
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.substring(7);
-      const { data: { user }, error } = await supabase.auth.getUser(token);
-      
-      if (!error && user) {
-        req.user = user;
-        req.userId = user.id;
-      }
-    }
-    
-    next();
-  } catch (err) {
-    // Don't fail on optional auth errors, just continue without user
-    console.warn('Optional auth error (non-fatal):', err);
-    next();
-  }
-}

@@ -1,5 +1,7 @@
 # Plaid Production Gap Analysis (TMM)
 
+> **⚠️ STALE (marked 2026-07-03, Phase 0.7).** Written before Plaid production approval was granted; several items listed as "Open" (e.g. tests) now exist. Kept for historical context. Current source of truth: `docs/project-audit/` and `project-roadmap/05-plaid-lifecycle-policy.md`.
+
 This document maps Plaid launch readiness requirements to current TMM implementation and identifies what must be completed for production approval and safe operation.
 
 ## Scope assumptions

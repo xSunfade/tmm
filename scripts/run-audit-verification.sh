@@ -153,7 +153,7 @@ echo -e "${BLUE}=== F) Documentation ===${NC}"
 echo ""
 
 echo "1. Checking ARCHITECTURE.md..."
-if [ -f "ARCHITECTURE.md" ]; then
+if [ -f "docs/project/ARCHITECTURE.md" ]; then
     echo -e "${GREEN}✅ ARCHITECTURE.md exists${NC}"
     PASSED=$((PASSED + 1))
 else
@@ -162,7 +162,7 @@ else
 fi
 
 echo "2. Checking AUDIT_CHECKLIST.md..."
-if [ -f "AUDIT_CHECKLIST.md" ]; then
+if [ -f "docs/project/AUDIT_CHECKLIST.md" ]; then
     echo -e "${GREEN}✅ AUDIT_CHECKLIST.md exists${NC}"
     PASSED=$((PASSED + 1))
 else

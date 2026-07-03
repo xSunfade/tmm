@@ -65,10 +65,11 @@ function getStorageInstance() {
 
 /**
  * Encrypt a token
+ * Exported for tests/security/token-encryption.test.js; not part of the storage API.
  * @param {string} text - Plain text token
  * @returns {string} Encrypted token
  */
-function encrypt(text) {
+export function encrypt(text) {
   const key = getEncryptionKey();
   const iv = crypto.randomBytes(16);
   const cipher = crypto.createCipheriv(ALGORITHM, Buffer.from(key, 'hex'), iv);
@@ -83,10 +84,11 @@ function encrypt(text) {
 
 /**
  * Decrypt a token
+ * Exported for tests/security/token-encryption.test.js; not part of the storage API.
  * @param {string} encryptedText - Encrypted token
  * @returns {string} Decrypted token
  */
-function decrypt(encryptedText) {
+export function decrypt(encryptedText) {
   const parts = encryptedText.split(':');
   if (parts.length !== 3) {
     throw new Error('Invalid encrypted token format');

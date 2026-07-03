@@ -122,35 +122,81 @@ if (config.tls.insecureSkipVerify) {
   );
 }
 
-// Validate required configuration
-if (!config.plaid.clientId || !config.plaid.secret) {
-  if (isProduction) {
-    throw new Error('PLAID_CLIENT_ID and PLAID_SECRET must be set in production');
-  } else {
-    console.warn('⚠️  PLAID_CLIENT_ID and PLAID_SECRET not set. Plaid features will not work.');
-  }
+// ==========================================================
+// Startup configuration validator (ENV-1)
+// Prints one table of every operational variable and refuses
+// to boot in production when a production-required var is missing.
+// ==========================================================
+
+// severity: 'required' = must be present in production (hard fail);
+//           'recommended' = warned about but never blocks boot.
+// secret: mask the value in the printed table.
+const CONFIG_CHECKS = [
+  { key: 'NODE_ENV', value: NODE_ENV, severity: 'recommended' },
+  { key: 'PORT', value: config.port, severity: 'recommended' },
+  { key: 'CORS_ORIGIN', value: config.corsOrigins.join(', '), severity: 'required' },
+  { key: 'PLAID_CLIENT_ID', value: config.plaid.clientId, severity: 'required' },
+  { key: 'PLAID_SECRET', value: config.plaid.secret, severity: 'required', secret: true },
+  { key: 'PLAID_ENVIRONMENT', value: config.plaid.environment, severity: 'recommended' },
+  { key: 'SUPABASE_URL', value: config.supabase.url, severity: 'required' },
+  { key: 'SUPABASE_PUBLISHABLE_KEY', value: config.supabase.publishableKey, severity: 'required' },
+  // Promoted to 'required' in Phase 1.5 (FRAGILE-6 boot guard + token encryption).
+  { key: 'SUPABASE_SECRET_KEY', value: config.supabase.secretKey, severity: 'recommended', secret: true },
+  { key: 'TOKEN_ENCRYPTION_KEY', value: config.encryption.key, severity: 'recommended', secret: true },
+  { key: 'STRIPE_SECRET_KEY', value: config.stripe.secretKey, severity: 'recommended', secret: true },
+  { key: 'STRIPE_WEBHOOK_SECRET', value: config.stripe.webhookSecret, severity: 'recommended', secret: true },
+  { key: 'GOOGLE_CLIENT_ID', value: config.google.clientId, severity: 'recommended' },
+  { key: 'GOOGLE_CLIENT_SECRET', value: config.google.clientSecret, severity: 'recommended', secret: true }
+];
+
+function isSet(value) {
+  return value !== undefined && value !== null && String(value).trim() !== '';
 }
 
-if (!config.supabase.url || !config.supabase.publishableKey) {
-  if (isProduction) {
-    throw new Error('SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY must be set in production');
-  } else {
-    console.warn('⚠️  SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY not set. Database features will not work.');
-  }
+function displayValue(check) {
+  if (!isSet(check.value)) return '—';
+  return check.secret ? '******** (set)' : String(check.value);
 }
 
-if (isProduction && config.corsOrigins.length === 0) {
-  throw new Error('CORS_ORIGIN must be set in production');
-}
+const evaluated = CONFIG_CHECKS.map((check) => ({
+  ...check,
+  present: isSet(check.value)
+}));
 
-// Log configuration (non-sensitive)
+const missingRequired = evaluated.filter((c) => c.severity === 'required' && !c.present);
+const missingRecommended = evaluated.filter((c) => c.severity === 'recommended' && !c.present);
+
+// Print the table (always in dev; compact status line in prod).
 if (config.logging.verbose) {
-  console.log('Configuration loaded:');
-  console.log(`  Environment: ${config.env}`);
-  console.log(`  Port: ${config.port}`);
-  console.log(`  CORS Origins: ${config.corsOrigins.join(', ')}`);
-  console.log(`  Supabase URL: ${config.supabase.url ? '✓ Set' : '✗ Missing'}`);
-  console.log(`  Plaid Environment: ${config.plaid.environment}`);
+  const width = Math.max(...CONFIG_CHECKS.map((c) => c.key.length));
+  console.log(`\nConfiguration (${config.env}):`);
+  for (const c of evaluated) {
+    const status = c.present ? '✓' : c.severity === 'required' ? '✗ REQUIRED' : '· optional';
+    console.log(`  ${c.key.padEnd(width)}  ${status.padEnd(11)}  ${displayValue(c)}`);
+  }
+  console.log('');
+}
+
+if (missingRecommended.length > 0) {
+  console.warn(
+    `⚠️  Optional config not set (features degraded): ${missingRecommended.map((c) => c.key).join(', ')}`
+  );
+}
+
+if (isProduction && missingRequired.length > 0) {
+  const names = missingRequired.map((c) => c.key).join(', ');
+  throw new Error(
+    `Refusing to boot in production: missing required configuration → ${names}. ` +
+      `Set these in the hosting platform's environment variables (see backend/.env.example).`
+  );
+}
+
+if (!isProduction && missingRequired.length > 0) {
+  console.warn(
+    `⚠️  Missing required-in-production config (allowed in ${config.env}): ${missingRequired
+      .map((c) => c.key)
+      .join(', ')}`
+  );
 }
 
 export default config;

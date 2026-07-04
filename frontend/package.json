@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "test:simulation": "tsx ../tests/simulation/simulation-validation.test.ts"
+    "test:simulation": "tsx ../tests/simulation/simulation-validation.test.ts && tsx ../tests/simulation/worker-host.test.ts && tsx ../tests/unit/plan-persistence.test.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.91.1",

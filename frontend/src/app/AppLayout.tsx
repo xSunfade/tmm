@@ -730,20 +730,16 @@ export function AppLayout({ children }: AppLayoutProps) {
             const isLocked = Boolean(item.requiresPlus && !isPlus);
             const isActive = isRoute(pathname, item.key);
             const isAccountIntegration = item.key === 'account-integration';
-            const navClass = isAccountIntegration
-              ? isActive
-                ? 'border border-violet-400/40 bg-violet-500/20 text-violet-100 shadow-[0_0_10px_rgba(168,85,247,0.18)]'
-                : 'border border-violet-500/35 bg-violet-500/10 text-violet-200 hover:bg-violet-500/16'
-              : isActive
-                ? 'bg-slate-800 text-white'
-                : 'text-slate-300 hover:bg-slate-900';
+            const navClass = isActive
+              ? 'border border-emerald-400/40 bg-emerald-500/20 text-emerald-100 shadow-[0_0_10px_rgba(16,185,129,0.18)]'
+              : 'border border-transparent text-slate-300 hover:bg-slate-900';
             return (
               <button
                 key={item.key}
                 type="button"
                 data-tour={`nav-${item.key}`}
                 aria-disabled={isLocked}
-                title={isLocked ? 'TMM+ required' : undefined}
+                title={isLocked && !isAccountIntegration ? 'TMM+ required' : undefined}
                 className={`w-full rounded-lg px-3 py-2 text-left transition ${navClass}`}
                 onClick={() => {
                   if (isLocked) {
@@ -753,9 +749,13 @@ export function AppLayout({ children }: AppLayoutProps) {
                   navigateToRoute(item.key);
                 }}
               >
-                <span className="flex items-center justify-between gap-2">
+                <span className="flex w-full items-center gap-2">
                   <span>{item.label}</span>
-                  {isLocked ? (
+                  {isAccountIntegration ? (
+                    <span className="tmm-plus-badge" title="TMM+" aria-label="TMM+">
+                      +
+                    </span>
+                  ) : isLocked ? (
                     <svg viewBox="0 0 24 24" className="h-4 w-4 flex-shrink-0 text-current" aria-hidden>
                       <path
                         fill="currentColor"

@@ -79,7 +79,8 @@ export async function removePlaidItemForUser(deps, { userId, itemId }) {
       plaidRevoked = true;
     } catch (err) {
       // Best-effort: local cleanup must proceed even if Plaid is unreachable.
-      logger.warn(`[plaid] item/remove failed for ${itemId}:`, err?.message || err);
+      // Static format string: itemId is user-provided (js/tainted-format-string).
+      logger.warn('[plaid] item/remove failed for item %s:', itemId, err?.message || err);
     }
   }
 
@@ -109,7 +110,8 @@ export async function removePlaidItemForUser(deps, { userId, itemId }) {
     });
   } catch (err) {
     // Event logging must not fail the removal itself.
-    logger.warn(`[plaid] connection event log failed for ${itemId}:`, err?.message || err);
+    // Static format string: itemId is user-provided (js/tainted-format-string).
+    logger.warn('[plaid] connection event log failed for item %s:', itemId, err?.message || err);
   }
 
   return { plaidRevoked, tokenDeleted };

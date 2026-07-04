@@ -140,9 +140,9 @@ const CONFIG_CHECKS = [
   { key: 'PLAID_ENVIRONMENT', value: config.plaid.environment, severity: 'recommended' },
   { key: 'SUPABASE_URL', value: config.supabase.url, severity: 'required' },
   { key: 'SUPABASE_PUBLISHABLE_KEY', value: config.supabase.publishableKey, severity: 'required' },
-  // Promoted to 'required' in Phase 1.5 (FRAGILE-6 boot guard + token encryption).
-  { key: 'SUPABASE_SECRET_KEY', value: config.supabase.secretKey, severity: 'recommended', secret: true },
-  { key: 'TOKEN_ENCRYPTION_KEY', value: config.encryption.key, severity: 'recommended', secret: true },
+  // Required in production (FRAGILE-6 boot guard + fail-closed token encryption).
+  { key: 'SUPABASE_SECRET_KEY', value: config.supabase.secretKey, severity: 'required', secret: true },
+  { key: 'TOKEN_ENCRYPTION_KEY', value: config.encryption.key, severity: 'required', secret: true },
   { key: 'STRIPE_SECRET_KEY', value: config.stripe.secretKey, severity: 'recommended', secret: true },
   { key: 'STRIPE_WEBHOOK_SECRET', value: config.stripe.webhookSecret, severity: 'recommended', secret: true },
   { key: 'GOOGLE_CLIENT_ID', value: config.google.clientId, severity: 'recommended' },

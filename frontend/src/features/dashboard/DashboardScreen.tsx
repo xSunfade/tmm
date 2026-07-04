@@ -44,6 +44,8 @@ export function DashboardScreen() {
   const [showReconciliationModal, setShowReconciliationModal] = React.useState(false);
   const [simulation, setSimulation] = React.useState<SimulationResult>(EMPTY_SIMULATION);
   const [simulationLoading, setSimulationLoading] = React.useState(false);
+  const [simulationError, setSimulationError] = React.useState<string | null>(null);
+  const [simulationAttempt, setSimulationAttempt] = React.useState(0);
   const latestPlanRef = React.useRef(planState);
   const altChartEnabledKey = React.useMemo(
     () =>
@@ -84,6 +86,7 @@ export function DashboardScreen() {
     const cached = getCachedSimulation(cacheKey);
     if (cached) {
       setSimulation(cached);
+      setSimulationError(null);
       setSimulationLoading(false);
       return () => {
         cancelled = true;
@@ -91,6 +94,7 @@ export function DashboardScreen() {
     }
 
     setSimulationLoading(true);
+    setSimulationError(null);
     runSimulationInWorker(plan, summary.runYears, summary.granularity, {
       seed: plan.forecastSeed,
       monteCarloRuns,
@@ -101,8 +105,9 @@ export function DashboardScreen() {
         setCachedSimulation(cacheKey, nextSimulation);
         setSimulation(nextSimulation);
       })
-      .catch(() => {
+      .catch((error) => {
         if (cancelled) return;
+        setSimulationError(error instanceof Error ? error.message : 'Simulation failed');
       })
       .finally(() => {
         if (cancelled) return;
@@ -119,7 +124,8 @@ export function DashboardScreen() {
     summary.runYears,
     summary.granularity,
     summary.forecastView,
-    monteCarloRuns
+    monteCarloRuns,
+    simulationAttempt
   ]);
 
   React.useEffect(() => {
@@ -423,6 +429,25 @@ export function DashboardScreen() {
               );
             })}
           </div>
+          {simulationError ? (
+            <div
+              className="mt-4 rounded-lg border border-rose-500/40 bg-rose-500/10 p-4 text-sm text-rose-200"
+              role="alert"
+              data-testid="simulation-error"
+            >
+              <div className="font-semibold">Projection could not be updated</div>
+              <div className="mt-1 text-xs text-rose-200/80">
+                The simulation failed to run ({simulationError}). The chart below may be stale or empty.
+              </div>
+              <button
+                type="button"
+                className="mt-3 rounded-lg border border-rose-300/50 px-3 py-1.5 text-xs font-semibold text-rose-100 hover:bg-rose-500/20"
+                onClick={() => setSimulationAttempt((attempt) => attempt + 1)}
+              >
+                Retry simulation
+              </button>
+            </div>
+          ) : null}
           <div className="mt-4">
             <NetWorthChart
               series={simulation.series}

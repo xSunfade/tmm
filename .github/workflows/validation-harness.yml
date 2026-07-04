@@ -7,12 +7,6 @@ on:
 jobs:
   unit-tests:
     runs-on: ubuntu-latest
-    env:
-      # Dummy values: backend/supabaseClient.js throws at import time without
-      # them, and unit tests only need the module to load (no network calls).
-      # Lazy client init lands in Phase 1.5 (FRAGILE-6); drop these then.
-      SUPABASE_URL: "https://ci-dummy.supabase.co"
-      SUPABASE_PUBLISHABLE_KEY: "sb_publishable_ci_dummy"
     steps:
       - uses: actions/checkout@v4
 

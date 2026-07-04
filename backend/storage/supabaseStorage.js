@@ -11,6 +11,8 @@ export class SupabaseStorage extends StorageInterface {
   constructor(config = {}) {
     super();
     this.config = config;
+    // Injectable for unit tests; defaults to the shared service-role client.
+    this.client = config.client || supabaseAdmin;
   }
 
   /**
@@ -23,7 +25,7 @@ export class SupabaseStorage extends StorageInterface {
     try {
       // Verify connection: prefer profiles (006) as it exists in auth-focused setups; fallback to plaid_tokens (001)
       let error = null;
-      const { error: profilesError } = await supabaseAdmin
+      const { error: profilesError } = await this.client
         .from('profiles')
         .select('id')
         .limit(1);
@@ -32,7 +34,7 @@ export class SupabaseStorage extends StorageInterface {
         return;
       }
       if (profilesError.code === 'PGRST116') {
-        const { error: tokensError } = await supabaseAdmin
+        const { error: tokensError } = await this.client
           .from('plaid_tokens')
           .select('item_id')
           .limit(1);
@@ -70,7 +72,7 @@ export class SupabaseStorage extends StorageInterface {
       // For authenticated users, userId is a UUID from auth.users
       // We can directly use it without creating a user record
       // Upsert token (insert or update)
-      const { error } = await supabaseAdmin
+      const { error } = await this.client
         .from('plaid_tokens')
         .upsert({
           item_id: itemId,
@@ -102,7 +104,7 @@ export class SupabaseStorage extends StorageInterface {
     }
 
     try {
-      let query = supabaseAdmin
+      let query = this.client
         .from('plaid_tokens')
         .select('access_token')
         .eq('item_id', itemId);
@@ -147,7 +149,7 @@ export class SupabaseStorage extends StorageInterface {
     }
 
     try {
-      let query = supabaseAdmin
+      let query = this.client
         .from('plaid_tokens')
         .delete()
         .eq('item_id', itemId);
@@ -157,20 +159,15 @@ export class SupabaseStorage extends StorageInterface {
         query = query.eq('user_id', userId);
       }
 
-      const { error } = await query;
+      // select() returns the deleted rows: confirms the delete actually
+      // matched a row without a second (unscoped) existence query (BUG-2).
+      const { data: deletedRows, error } = await query.select('item_id');
 
       if (error) {
         throw new Error(`Failed to remove token: ${error.message}`);
       }
 
-      // Verify token was removed (check if it still exists)
-      const { data } = await supabaseAdmin
-        .from('plaid_tokens')
-        .select('item_id')
-        .eq('item_id', itemId)
-        .single();
-
-      if (data) {
+      if (!deletedRows || deletedRows.length === 0) {
         throw new Error(`Token not found for item: ${itemId}`);
       }
     } catch (error) {
@@ -193,7 +190,7 @@ export class SupabaseStorage extends StorageInterface {
     }
 
     try {
-      const { data, error } = await supabaseAdmin
+      const { data, error } = await this.client
         .from('plaid_tokens')
         .select('item_id')
         .eq('item_id', itemId)
@@ -221,7 +218,7 @@ export class SupabaseStorage extends StorageInterface {
       throw new Error('itemId is required');
     }
 
-    let query = supabaseAdmin
+    let query = this.client
       .from('plaid_tokens')
       .select('transactions_sync_cursor')
       .eq('item_id', itemId);
@@ -254,7 +251,7 @@ export class SupabaseStorage extends StorageInterface {
       throw new Error('itemId is required');
     }
 
-    let query = supabaseAdmin
+    let query = this.client
       .from('plaid_tokens')
       .update({
         transactions_sync_cursor: cursor || null,
@@ -282,7 +279,7 @@ export class SupabaseStorage extends StorageInterface {
       throw new Error('userId is required');
     }
 
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await this.client
       .from('plaid_tokens')
       .select('item_id')
       .eq('user_id', userId);

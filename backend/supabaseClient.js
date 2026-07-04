@@ -1,5 +1,8 @@
 // Supabase Client Configuration
-// Initializes and exports Supabase client instances for database operations
+// Initializes and exports Supabase client instances for database operations.
+// Clients are created only when configuration is present so the module can be
+// imported (e.g. by unit tests) without env vars; production boot is guarded
+// by the config validator in config.js (FRAGILE-6).
 
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
@@ -13,21 +16,31 @@ const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_PUBLISHABLE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY;
 const SUPABASE_SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
 
-if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
-  throw new Error('SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY must be set in environment variables');
+// Fails on first use (with a clear message) instead of at import time.
+function unconfiguredClient(message) {
+  return new Proxy({}, {
+    get(_target, prop) {
+      if (typeof prop === 'symbol') return undefined;
+      throw new Error(message);
+    }
+  });
 }
 
-// Create standard Supabase client (uses publishable key, respects RLS)
-export const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
-  auth: {
-    persistSession: false // Server-side, no session persistence needed
-  }
-});
+// Standard client (publishable key, respects RLS)
+export const supabase = (SUPABASE_URL && SUPABASE_PUBLISHABLE_KEY)
+  ? createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+      auth: {
+        persistSession: false // Server-side, no session persistence needed
+      }
+    })
+  : unconfiguredClient(
+      'Supabase is not configured: set SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY environment variables'
+    );
 
-// Create admin client (uses secret key, bypasses RLS)
-// Use this for server-side operations that need to bypass RLS
-// Note: Secret keys cannot be used in browsers and will fail with HTTP 401
-export const supabaseAdmin = SUPABASE_SECRET_KEY
+// Admin client (secret key, bypasses RLS). Stays null when the secret key is
+// absent — callers already branch on this. Production refuses to boot without
+// it (config.js validator).
+export const supabaseAdmin = (SUPABASE_URL && SUPABASE_SECRET_KEY)
   ? createClient(SUPABASE_URL, SUPABASE_SECRET_KEY, {
       auth: {
         persistSession: false

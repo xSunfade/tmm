@@ -6,7 +6,7 @@ import cors from 'cors';
 import { randomUUID } from 'crypto';
 import Stripe from 'stripe';
 import config from './config.js';
-import { plaidClient } from './plaidClient.js';
+import { plaidClient, isPlaidConfigured } from './plaidClient.js';
 import {
   storeToken,
   getToken,
@@ -104,6 +104,7 @@ import {
   removeGoogleTokens,
   hasGoogleTokens
 } from './storage/googleTokens.js';
+import { createListPlaidItemsHandler, removePlaidItemForUser } from './lib/plaidItemHandlers.js';
 
 const app = express();
 const PORT = config.port;
@@ -162,6 +163,19 @@ const apiRateLimit = createRateLimiter({
   max: Number(process.env.API_RATE_LIMIT_MAX || 240)
 });
 app.use('/api', apiRateLimit);
+
+// Plaid routes fail fast with 503 when credentials are absent (FRAGILE-5);
+// the client itself is lazy so the server boots without them (dev/Sheets-only
+// work). The webhook route is excluded: it only records + enqueues.
+app.use(['/api/plaid', '/api/ops/plaid'], (req, res, next) => {
+  if (!isPlaidConfigured()) {
+    return res.status(503).json({
+      error: 'Plaid integration is not configured on this server',
+      code: 'PLAID_NOT_CONFIGURED'
+    });
+  }
+  next();
+});
 
 const webhookRateLimit = createRateLimiter({
   id: 'webhook-plaid',
@@ -1079,122 +1093,6 @@ app.get('/api/health', (req, res) => {
     timestamp: new Date().toISOString(),
     requestId: req.requestId
   });
-});
-
-// Diagnostic endpoint: Supabase connectivity and RLS test
-app.get('/api/diag/supabase', async (req, res) => {
-  const checks = {
-    connectivity: false,
-    rls_enabled: false,
-    tables_exist: false,
-    service_role_works: false,
-    anon_key_blocked: false
-  };
-  
-  const errors = [];
-  
-  try {
-    // Test connectivity
-    const { data: usersData, error: usersError } = await supabaseAdmin
-      .from('users')
-      .select('id')
-      .limit(1);
-    
-    checks.connectivity = !usersError;
-    checks.service_role_works = !usersError;
-    checks.tables_exist = !usersError;
-    
-    if (usersError) {
-      errors.push(`Users table error: ${usersError.message}`);
-    }
-    
-    // Test RLS is enabled
-    // We verify RLS is enabled by checking if we can query tables
-    // (Service role bypasses RLS, so if we can query, RLS is at least enabled)
-    // In a real implementation, you'd query pg_tables, but that requires special permissions
-    // For now, we assume RLS is enabled if service role can access tables
-    checks.rls_enabled = checks.connectivity; // If we can connect and query, RLS is likely enabled
-    
-    // Test anon key would be blocked (we can't test this directly without anon key,
-    // but we can verify policies exist)
-    checks.anon_key_blocked = true; // Assume true if policies exist (verified in migration)
-    
-    res.json({ 
-      status: errors.length === 0 ? 'ok' : 'partial',
-      checks,
-      errors: errors.length > 0 ? errors : undefined,
-      timestamp: new Date().toISOString(),
-      requestId: req.requestId
-    });
-  } catch (err) {
-    res.status(500).json({ 
-      status: 'error', 
-      error: err.message,
-      checks,
-      timestamp: new Date().toISOString(),
-      requestId: req.requestId
-    });
-  }
-});
-
-// Diagnostic endpoint: Plaid configuration and connectivity
-app.get('/api/diag/plaid', async (req, res) => {
-  const checks = {
-    env_configured: false,
-    can_create_link_token: false
-  };
-  
-  const errors = [];
-  
-  try {
-    // Check environment variables
-    checks.env_configured = !!(config.plaid.clientId && config.plaid.secret);
-    
-    if (!checks.env_configured) {
-      errors.push('Plaid credentials not configured (PLAID_CLIENT_ID or PLAID_SECRET missing)');
-    }
-    
-    // Test link token creation (if configured)
-    if (checks.env_configured) {
-      try {
-        const request = {
-          user: {
-            client_user_id: 'diagnostic_test',
-          },
-          client_name: 'Money Machine',
-          products: ['transactions', 'auth'],
-          country_codes: ['US'],
-          language: 'en',
-        };
-        
-        const response = await plaidClient.linkTokenCreate(request);
-        checks.can_create_link_token = !!response.data.link_token;
-        
-        if (!checks.can_create_link_token) {
-          errors.push('Link token creation failed (check Plaid credentials and environment)');
-        }
-      } catch (err) {
-        errors.push(`Link token creation error: ${err.message}`);
-      }
-    }
-    
-    res.json({ 
-      status: errors.length === 0 ? 'ok' : 'error',
-      checks,
-      errors: errors.length > 0 ? errors : undefined,
-      plaid_environment: config.plaid.environment,
-      timestamp: new Date().toISOString(),
-      requestId: req.requestId
-    });
-  } catch (err) {
-    res.status(500).json({ 
-      status: 'error', 
-      error: err.message,
-      checks,
-      timestamp: new Date().toISOString(),
-      requestId: req.requestId
-    });
-  }
 });
 
 app.get('/', (req, res) => {
@@ -2287,28 +2185,12 @@ app.post(
 });
 
 // List Plaid items (institutions) for the authenticated user (requires auth + TMM+)
-app.get('/api/plaid/items', requireAuth, requireTmmPlus, async (req, res, next) => {
-  try {
-    const userId = req.userId;
-    const { data: rows, error } = await supabaseAdmin
-      .from('plaid_tokens')
-      .select('item_id')
-      .eq('user_id', userId);
-
-    if (error) {
-      return res.status(500).json({ error: 'Failed to list items', message: error.message });
-    }
-
-    const items = (rows || []).map((r) => ({ item_id: r.item_id }));
-    res.json({
-      items,
-      item_count: connectedItemIds.size,
-      item_cap: PLAID_ITEM_CAP
-    });
-  } catch (err) {
-    next(err);
-  }
-});
+app.get(
+  '/api/plaid/items',
+  requireAuth,
+  requireTmmPlus,
+  createListPlaidItemsHandler({ supabaseAdmin, itemCap: PLAID_ITEM_CAP })
+);
 
 app.get('/api/plaid/item-status', requireAuth, requireTmmPlus, async (req, res, next) => {
   try {
@@ -3232,13 +3114,20 @@ app.post(
     if (!item_id) {
       return res.status(400).json({ error: 'item_id is required' });
     }
-    const { deleteAccountsByUserAndItemId } = await import('./models/account.js');
-    await createArchiveSnapshotForItem(userId, item_id, {
-      pointSource: 'plaid_archived',
-      metadata: { trigger: 'remove_item', item_id }
-    });
-    await deleteAccountsByUserAndItemId(userId, item_id);
-    await removePlaidItemStatus(userId, item_id);
+    // Full removal (BUG-3): revokes at Plaid and deletes the token row.
+    // See removePlaidItemForUser for the remove-item vs disconnect contract.
+    await removePlaidItemForUser(
+      {
+        getToken,
+        removeToken,
+        plaidClient,
+        createArchiveSnapshotForItem,
+        deleteAccountsByUserAndItemId,
+        removePlaidItemStatus,
+        recordPlaidConnectionEvent
+      },
+      { userId, itemId: item_id }
+    );
     res.json({ ok: true });
   } catch (err) {
     next(err);

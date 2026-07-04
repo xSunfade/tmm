@@ -1,22 +1,20 @@
 // Plaid Client Configuration
-// Initializes and exports a configured Plaid client instance
+// Lazily initializes the Plaid client so the backend can boot without Plaid
+// credentials (FRAGILE-5); Plaid routes return 503 when unconfigured.
 
 import { Configuration, PlaidApi, PlaidEnvironments } from 'plaid';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
-const PLAID_CLIENT_ID = process.env.PLAID_CLIENT_ID;
-const PLAID_SECRET = process.env.PLAID_SECRET;
-const PLAID_ENVIRONMENT = process.env.PLAID_ENVIRONMENT || 'sandbox';
+let cachedClient = null;
 
-if (!PLAID_CLIENT_ID || !PLAID_SECRET) {
-  throw new Error('PLAID_CLIENT_ID and PLAID_SECRET must be set in environment variables');
+export function isPlaidConfigured() {
+  return !!(process.env.PLAID_CLIENT_ID && process.env.PLAID_SECRET);
 }
 
-// Map environment string to Plaid environment
 const getPlaidEnvironment = (env) => {
-  switch (env.toLowerCase()) {
+  switch ((env || 'sandbox').toLowerCase()) {
     case 'production':
       return PlaidEnvironments.production;
     case 'development':
@@ -27,20 +25,38 @@ const getPlaidEnvironment = (env) => {
   }
 };
 
-// Create Plaid configuration
-const configuration = new Configuration({
-  basePath: getPlaidEnvironment(PLAID_ENVIRONMENT),
-  baseOptions: {
-    headers: {
-      'PLAID-CLIENT-ID': PLAID_CLIENT_ID,
-      'PLAID-SECRET': PLAID_SECRET,
-    },
-  },
+export function getPlaidClient() {
+  if (!isPlaidConfigured()) {
+    throw new Error(
+      'Plaid is not configured: set PLAID_CLIENT_ID and PLAID_SECRET environment variables'
+    );
+  }
+  if (!cachedClient) {
+    const configuration = new Configuration({
+      basePath: getPlaidEnvironment(process.env.PLAID_ENVIRONMENT),
+      baseOptions: {
+        headers: {
+          'PLAID-CLIENT-ID': process.env.PLAID_CLIENT_ID,
+          'PLAID-SECRET': process.env.PLAID_SECRET,
+        },
+      },
+    });
+    cachedClient = new PlaidApi(configuration);
+  }
+  return cachedClient;
+}
+
+// Lazy proxy so existing `plaidClient.method()` call sites keep working;
+// the real client is only constructed (and credentials only required) on
+// first use, not at import time.
+export const plaidClient = new Proxy({}, {
+  get(_target, prop) {
+    if (typeof prop === 'symbol') return undefined;
+    const client = getPlaidClient();
+    const value = client[prop];
+    return typeof value === 'function' ? value.bind(client) : value;
+  }
 });
 
-// Create and export Plaid client
-export const plaidClient = new PlaidApi(configuration);
-
 // Export environment info for reference
-export const plaidEnvironment = PLAID_ENVIRONMENT;
-
+export const plaidEnvironment = process.env.PLAID_ENVIRONMENT || 'sandbox';

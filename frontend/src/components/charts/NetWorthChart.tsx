@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { SimulationSeries } from '../../lib/simulation/ledger';
 import type { Augment } from '../../lib/plan/types';
+import { ChartWaveOverlay } from './ChartWaveOverlay';
 
 type PercentileSeries = {
   alt: string;
@@ -16,6 +17,7 @@ type NetWorthChartProps = {
   altChartEnabled?: Record<string, boolean>;
   altColors?: Record<string, string>;
   granularity?: 'monthly' | 'daily';
+  isUpdating?: boolean;
 };
 
 type ViewWindow = { start: number; end: number };
@@ -236,7 +238,8 @@ export function NetWorthChart({
   augments = [],
   altChartEnabled = {},
   altColors = {},
-  granularity = 'monthly'
+  granularity = 'monthly',
+  isUpdating = false
 }: NetWorthChartProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const sliderRef = useRef<HTMLDivElement | null>(null);
@@ -989,7 +992,13 @@ export function NetWorthChart({
   return (
     <div className="space-y-3">
       <div ref={containerRef} className="relative" style={{ height }}>
-        <canvas ref={canvasRef} className="h-full w-full rounded-lg border border-slate-800 bg-slate-950" />
+        <canvas
+          ref={canvasRef}
+          className={`h-full w-full rounded-lg border border-slate-800 bg-slate-950 transition-[filter,opacity] duration-300 ${
+            isUpdating ? 'pointer-events-none opacity-35 blur-[2px]' : ''
+          }`}
+        />
+        <ChartWaveOverlay active={isUpdating} />
         <div className="pointer-events-none absolute inset-0 z-10">
           {augmentMarkers.map((marker) => (
             <div

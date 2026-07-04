@@ -22,7 +22,6 @@ import {
 
 const DEFAULT_RUNS = 20;
 const IDLE_RUNS = 80;
-const EXPORT_RUNS = 500;
 const REFINE_DEBOUNCE_MS = 2500;
 const EMPTY_SIMULATION: SimulationResult = {
   series: [],
@@ -248,85 +247,203 @@ export function DashboardScreen() {
     [appState.auth.planTier, remoteHistoricalSeries, simulation.historicalSeries]
   );
 
-  return (
-    <div className="min-h-screen bg-slate-950 px-6 py-8 text-slate-200">
-      <div className="mx-auto w-full max-w-6xl space-y-6">
-        <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-5">
-          <h1 className="text-2xl font-semibold text-slate-100">Dashboard</h1>
-        </div>
+  const projectedEndValue = React.useMemo(() => {
+    if (!endRange) return null;
+    const active = endRange.values.find((entry) => entry.alt === planState.activeAlt);
+    return active?.value ?? endRange.values[0]?.value ?? null;
+  }, [endRange, planState.activeAlt]);
 
-        <section className="grid gap-4 md:grid-cols-3">
-          <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-5" data-tour="net-worth-metric">
-            <div className="text-xs uppercase tracking-wide text-slate-500">
-              Net Worth (latest) <span className="ml-2 rounded bg-slate-800 px-2 py-1 text-[10px]">Baseline</span>
+  const projectedDelta =
+    projectedEndValue != null ? projectedEndValue - netWorth : null;
+  const projectedDeltaPct =
+    projectedDelta != null && netWorth !== 0 ? (projectedDelta / Math.abs(netWorth)) * 100 : null;
+
+  const forecastHorizonLabel = `${summary.runYears} yr · ${summary.granularity === 'monthly' ? 'Monthly' : 'Daily'}`;
+
+  return (
+    <div className="min-h-screen bg-slate-950 px-4 py-4 text-slate-200 sm:px-6">
+      <div className="mx-auto w-full max-w-6xl space-y-4">
+        <section className="dashboard-hero relative overflow-hidden rounded-2xl">
+          <div className="dashboard-hero__backdrop" aria-hidden />
+          <div className="relative z-10 flex flex-col gap-3 p-3.5 sm:p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2.5">
+              <div className="min-w-0">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-300/85">
+                  Live simulation
+                </p>
+                <h1 className="mt-0.5 text-lg font-semibold tracking-tight text-white sm:text-xl">Dashboard</h1>
+                <p className="mt-0.5 text-[11px] text-slate-300/80">
+                  Your money, simulated ·{' '}
+                  <span className="font-medium text-emerald-200">{planState.activeAlt}</span>
+                </p>
+              </div>
+              <div className="dashboard-hero__controls flex flex-wrap items-center gap-1.5" data-tour="run-range-controls">
+                <select
+                  className="dashboard-hero__select"
+                  value={summary.runYears}
+                  aria-label="Forecast run years"
+                  onChange={(event) =>
+                    setSummary((prev) => ({
+                      ...prev,
+                      runYears: Number(event.target.value) || 0
+                    }))
+                  }
+                >
+                  <option value={5}>5 years</option>
+                  <option value={10}>10 years</option>
+                  <option value={20}>20 years</option>
+                  <option value={30}>30 years</option>
+                </select>
+                <select
+                  className="dashboard-hero__select"
+                  value={summary.granularity}
+                  aria-label="Forecast granularity"
+                  onChange={(event) =>
+                    setSummary((prev) => ({
+                      ...prev,
+                      granularity: event.target.value as 'monthly' | 'daily'
+                    }))
+                  }
+                >
+                  <option value="monthly">Monthly</option>
+                  <option value="daily">Daily</option>
+                </select>
+                <select
+                  className="dashboard-hero__select dashboard-hero__select--wide"
+                  value={summary.forecastView || 'likely'}
+                  aria-label="Forecast view"
+                  onChange={(event) =>
+                    setSummary((prev) => ({
+                      ...prev,
+                      forecastView: event.target.value as 'likely' | 'range'
+                    }))
+                  }
+                >
+                  <option value="likely">Most Likely (P50)</option>
+                  <option value="range">Range (P10 - P90)</option>
+                </select>
+                <button
+                  type="button"
+                  className="dashboard-hero__action"
+                  onClick={() => dispatch({ type: 'hydrate', plan: withResampledForecastSeed(planState) })}
+                >
+                  Resample
+                </button>
+              </div>
             </div>
-            <div className="mt-2 text-2xl font-semibold text-slate-100">
-              <span data-testid="dashboard-net-worth-value">${netWorth.toLocaleString()}</span>
+
+            <div className="dashboard-hero__metrics grid gap-2.5 sm:grid-cols-3">
+              <div className="dashboard-hero__metric dashboard-hero__metric--primary" data-tour="net-worth-metric">
+                <div className="dashboard-hero__metric-label">
+                  <span>Net Worth</span>
+                  <span className="dashboard-hero__chip">Baseline</span>
+                </div>
+                <div className="dashboard-hero__value dashboard-hero__value--hero" data-testid="dashboard-net-worth-value">
+                  {formatCurrency(netWorth)}
+                </div>
+              </div>
+
+              <div className="dashboard-hero__metric" data-tour="cash-flow-metric">
+                <div className="dashboard-hero__metric-label">
+                  <span>{summary.granularity === 'monthly' ? 'Monthly' : 'Daily'} Cash Flow</span>
+                </div>
+                <div
+                  className={`dashboard-hero__value ${
+                    cashFlow >= 0 ? 'dashboard-hero__value--positive' : 'dashboard-hero__value--negative'
+                  }`}
+                  data-testid="dashboard-cashflow-value"
+                >
+                  {formatCurrency(cashFlow)}
+                </div>
+              </div>
+
+              <div className="dashboard-hero__metric dashboard-hero__metric--projection">
+                <div className="dashboard-hero__metric-label">
+                  <span>Projected End</span>
+                  <span className="dashboard-hero__chip dashboard-hero__chip--live">
+                    {simulationLoading ? 'Updating' : `${monteCarloRuns} runs`}
+                  </span>
+                </div>
+                <div className="dashboard-hero__value dashboard-hero__value--projection">
+                  {projectedEndValue != null ? formatCurrency(projectedEndValue) : '—'}
+                </div>
+                <div className="dashboard-hero__projection-meta">
+                  {endRange?.endDate ? (
+                    <span className="dashboard-hero__hint">{endRange.endDate.getFullYear()}</span>
+                  ) : null}
+                  {projectedDelta != null && projectedDeltaPct != null ? (
+                    <span
+                      className={`dashboard-hero__delta ${
+                        projectedDelta >= 0 ? 'dashboard-hero__delta--up' : 'dashboard-hero__delta--down'
+                      }`}
+                    >
+                      {projectedDelta >= 0 ? '+' : ''}
+                      {formatCurrency(projectedDelta)} ({projectedDelta >= 0 ? '+' : ''}
+                      {projectedDeltaPct.toFixed(1)}%)
+                    </span>
+                  ) : null}
+                </div>
+              </div>
             </div>
-          </div>
-          <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-5" data-tour="cash-flow-metric">
-            <div className="text-xs uppercase tracking-wide text-slate-500">
-              {summary.granularity === 'monthly' ? 'Monthly' : 'Daily'} Cash Flow
-              <span className="ml-2 rounded bg-slate-800 px-2 py-1 text-[10px]">Baseline</span>
+
+            <div className="dashboard-hero__layers" data-tour="alt-toggles">
+              <div className="dashboard-hero__layer-row">
+                <span className="dashboard-hero__layer-label">Alts</span>
+                <div className="dashboard-hero__pills">
+                  {altNames.map((name) => {
+                    const enabled = Boolean(planState.altChartEnabled[name]);
+                    return (
+                      <button
+                        key={name}
+                        type="button"
+                        aria-pressed={enabled}
+                        className={`dashboard-hero__pill ${enabled ? 'dashboard-hero__pill--on' : ''}`}
+                        onClick={() =>
+                          dispatch({ type: 'setAltChartEnabled', altName: name, enabled: !enabled })
+                        }
+                      >
+                        <span
+                          className="dashboard-hero__pill-dot"
+                          style={{ background: planState.altColors[name] || '#22c55e' }}
+                        />
+                        {name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="dashboard-hero__layer-row">
+                <span className="dashboard-hero__layer-label">Augments</span>
+                <div className="dashboard-hero__pills">
+                  {augmentToggles.length ? (
+                    augmentToggles.map((augment) => (
+                      <button
+                        key={augment.id}
+                        type="button"
+                        aria-pressed={augment.enabled}
+                        className={`dashboard-hero__pill ${augment.enabled ? 'dashboard-hero__pill--on' : ''}`}
+                        onClick={() =>
+                          dispatch({
+                            type: 'setAugments',
+                            augments: augmentToggles.map((a) =>
+                              a.id === augment.id ? { ...a, enabled: !a.enabled } : a
+                            )
+                          })
+                        }
+                      >
+                        {augment.name}
+                      </button>
+                    ))
+                  ) : (
+                    <span className="dashboard-hero__layer-empty">None</span>
+                  )}
+                </div>
+              </div>
             </div>
-            <div className="mt-2 text-2xl font-semibold text-slate-100">
-              <span data-testid="dashboard-cashflow-value">${cashFlow.toLocaleString()}</span>
-            </div>
-          </div>
-          <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-5" data-tour="run-range-controls">
-            <div className="text-xs uppercase tracking-wide text-slate-500">Run Range</div>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <select
-                className="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-100"
-                value={summary.runYears}
-                onChange={(event) =>
-                  setSummary((prev) => ({
-                    ...prev,
-                    runYears: Number(event.target.value) || 0
-                  }))
-                }
-              >
-                <option value={5}>5 years</option>
-                <option value={10}>10 years</option>
-                <option value={20}>20 years</option>
-                <option value={30}>30 years</option>
-              </select>
-              <select
-                className="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-100"
-                value={summary.granularity}
-                onChange={(event) =>
-                  setSummary((prev) => ({
-                    ...prev,
-                    granularity: event.target.value as 'monthly' | 'daily'
-                  }))
-                }
-              >
-                <option value="monthly">Monthly</option>
-                <option value="daily">Daily</option>
-              </select>
-              <select
-                className="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-100"
-                value={summary.forecastView || 'likely'}
-                onChange={(event) =>
-                  setSummary((prev) => ({
-                    ...prev,
-                    forecastView: event.target.value as 'likely' | 'range'
-                  }))
-                }
-              >
-                <option value="likely">Most Likely (P50)</option>
-                <option value="range">Range (P10 - P90)</option>
-              </select>
-              <button
-                type="button"
-                className="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-100 hover:bg-slate-900"
-                onClick={() => dispatch({ type: 'hydrate', plan: withResampledForecastSeed(planState) })}
-              >
-                Resample Forecast
-              </button>
-            </div>
-            <div className="mt-2 text-[11px] text-slate-500">
-              Scroll to zoom (x-axis). Drag to pan. Tooltip shows date & values. Runs: {monteCarloRuns} (idle target {IDLE_RUNS}, export {EXPORT_RUNS}).
+
+            <div className="dashboard-hero__footer flex flex-wrap items-center justify-between gap-2 text-[10px] text-slate-400/90">
+              <span>{forecastHorizonLabel}</span>
+              <span>{summary.forecastView === 'range' ? 'P10–P90 range' : 'P50 likely'}</span>
             </div>
           </div>
         </section>
@@ -344,74 +461,25 @@ export function DashboardScreen() {
           </section>
         ) : null}
 
-        <section className="rounded-lg border border-slate-800 bg-slate-900/60 p-5">
-          <div className="flex flex-wrap items-center justify-between gap-4 text-xs text-slate-400" data-tour="alt-toggles">
-            <div className="font-semibold text-slate-300">Alternatives on Chart</div>
-            <div className="flex items-center gap-2">
-              {altNames.map((name) => (
-                <label key={name} className="flex items-center gap-2 text-xs text-slate-300">
-                  <input
-                    type="checkbox"
-                    checked={Boolean(planState.altChartEnabled[name])}
-                    onChange={(event) =>
-                      dispatch({ type: 'setAltChartEnabled', altName: name, enabled: event.target.checked })
-                    }
-                  />
-                  <span className="inline-flex h-2 w-2 rounded-full" style={{ background: planState.altColors[name] || '#22c55e' }} />
-                  {name}
-                </label>
-              ))}
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-400">Simulation Augments</span>
-              <div className="flex flex-wrap gap-2">
-                {augmentToggles.length ? (
-                  augmentToggles.map((augment) => (
-                    <button
-                      key={augment.id}
-                      type="button"
-                      className={`rounded-full border px-2 py-1 text-[10px] ${
-                        augment.enabled ? 'border-emerald-500/50 text-emerald-200' : 'border-slate-700 text-slate-400'
-                      }`}
-                      onClick={() =>
-                        dispatch({
-                          type: 'setAugments',
-                          augments: augmentToggles.map((a) =>
-                            a.id === augment.id ? { ...a, enabled: !a.enabled } : a
-                          )
-                        })
-                      }
-                    >
-                      {augment.name}
-                    </button>
-                  ))
-                ) : (
-                  <span className="text-[10px] text-slate-500">No augments</span>
-                )}
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section className="rounded-lg border border-slate-800 bg-slate-900/60 p-6" data-tour="net-worth-chart">
-          <div className="flex flex-wrap items-center justify-between gap-4">
+        <section className="rounded-lg border border-slate-800 bg-slate-900/60 p-4" data-tour="net-worth-chart">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-sm font-semibold text-slate-200">Net Worth Projection</h2>
               <div className="text-[11px] text-slate-500">
                 {summary.forecastView === 'range'
-                  ? `Range forecast (P10-P90) based on ${simulation.monteCarloRuns || monteCarloRuns} simulated outcomes.`
-                  : 'Most Likely Projection (P50).'}
-                {simulationLoading ? <span className="ml-2 text-cyan-300">Updating...</span> : null}
+                  ? `P10–P90 · ${simulation.monteCarloRuns || monteCarloRuns} outcomes`
+                  : 'P50 most likely'}
+                {simulationLoading ? <span className="ml-2 text-emerald-300">Updating…</span> : null}
               </div>
             </div>
             <div className="text-right text-[10px] uppercase tracking-wide text-slate-500">
-              End of Run Range
-              <div className="mt-1 text-[11px] font-normal text-slate-400">
+              End of Run
+              <div className="mt-0.5 text-[11px] font-normal normal-case text-slate-400">
                 {endRange?.endDate ? endRange.endDate.toLocaleDateString() : '—'}
               </div>
             </div>
           </div>
-          <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-slate-500">
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
             {simulation.series.map((series, idx) => {
               const color = planState.altColors[series.alt] || palette[idx % palette.length];
               const value = endRange?.values.find((entry) => entry.alt === series.alt)?.value ?? 0;
@@ -448,7 +516,7 @@ export function DashboardScreen() {
               </button>
             </div>
           ) : null}
-          <div className="mt-4">
+          <div className="mt-3">
             <NetWorthChart
               series={simulation.series}
               percentileSeries={simulation.percentileSeries}
@@ -458,6 +526,7 @@ export function DashboardScreen() {
               altChartEnabled={planState.altChartEnabled}
               altColors={planState.altColors}
               granularity={summary.granularity}
+              isUpdating={simulationLoading}
             />
           </div>
           <div className="sr-only" data-testid="networth-tooltip">

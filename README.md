@@ -11,6 +11,9 @@ Project documentation lives under `docs/`:
 - `docs/project/` (architecture + audit + auth setup)
 - `docs/backend/` (backend + Supabase setup)
 - `docs/tests/` (test suite docs)
+- `docs/security/` (security policies, incident response, privacy)
+- `docs/SLACK_CHANNELS.md` (workspace channel structure and purposes)
+- `docs/SLACK_QUICK_REFERENCE.md` (quick channel lookup for humans and AI agents)
 
 ### Run locally
 

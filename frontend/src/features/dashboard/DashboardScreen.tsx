@@ -609,6 +609,7 @@ export function DashboardScreen() {
           <WeeklyCheckInModal
             altName={planState.activeAlt}
             alt={activeAlt}
+            planTier={appState.auth.planTier}
             onApply={(nextAlt) => {
               const nextPlan = JSON.parse(JSON.stringify(planState));
               nextPlan.alternatives[planState.activeAlt] = nextAlt;

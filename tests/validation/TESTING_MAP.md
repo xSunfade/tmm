@@ -85,11 +85,13 @@ Matching rule order:
 
 ## 5) Simulation Engine Interfaces and Boundaries
 
-Current simulation entrypoints:
+Current simulation entrypoints (single engine — the legacy float engine
+`simulation.ts` was deleted in Phase 1.5):
 
-- `frontend/src/lib/simulation/simulation.ts`
-  - `runSimulation()`
-  - `simulateAlternative()`
+- `frontend/src/lib/simulation/ledger.ts` (authoritative daily ledger in integer cents)
+  - `runSimulationFromLedger()`
+  - `buildPlanLedgerScenario()` (seeds state from the latest checkpoint per D3)
+  - `runLedgerScenario()`
 
 Current simulation dependencies:
 
@@ -104,11 +106,7 @@ Current outputs:
 - `SimulationResult.series` (value points by date)
 - `SimulationResult.historicalSeries`
 - audit/log strings
-- optional drift metadata
-
-Validation harness adds a deterministic ledger surface:
-
-- `frontend/src/lib/simulation/ledger.ts` (authoritative daily ledger in integer cents)
+- optional drift metadata (today's actuals vs today's projection from the latest checkpoint)
 
 ## 6) UX Surfaces That Must Reflect Data Correctly
 

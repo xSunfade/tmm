@@ -4,7 +4,6 @@ import { fileURLToPath } from 'url';
 import { DEFAULT_PLAN_STATE } from '../../frontend/src/lib/plan/defaults';
 import type { PlanState } from '../../frontend/src/lib/plan/types';
 import { getEffectiveValue } from '../../frontend/src/lib/plan/overrideManager';
-import { runSimulation } from '../../frontend/src/lib/simulation/simulation';
 import { runSimulationFromLedger } from '../../frontend/src/lib/simulation/ledger';
 import { isAugmentActive } from '../../frontend/src/lib/simulation/augments';
 import { runSimulationInWorker } from '../../frontend/src/lib/simulation/simulationWorkerHost';
@@ -120,7 +119,7 @@ function buildProbabilityAugmentPlan(probability: number): PlanState {
 
 async function testGoldenScenario(fixtures: any) {
   const plan = buildGoldenPlan(fixtures.golden.incomeMonthly, fixtures.golden.expenseMonthly);
-  const result = runSimulation(plan, 1, 'monthly');
+  const result = runSimulationFromLedger(plan, 1, 'monthly');
   const points = result.series[0]?.points || [];
   assert(points.length >= 3, 'Expected at least three monthly points');
 
@@ -135,8 +134,8 @@ async function testGoldenScenario(fixtures: any) {
 
 async function testDeterminism(fixtures: any) {
   const plan = buildGoldenPlan(fixtures.golden.incomeMonthly, fixtures.golden.expenseMonthly);
-  const first = runSimulation(plan, 2, 'monthly');
-  const second = runSimulation(plan, 2, 'monthly');
+  const first = runSimulationFromLedger(plan, 2, 'monthly');
+  const second = runSimulationFromLedger(plan, 2, 'monthly');
   const firstSeries = first.series[0]?.points || [];
   const secondSeries = second.series[0]?.points || [];
   assert(firstSeries.length === secondSeries.length, 'Determinism check failed: point length mismatch');
@@ -164,8 +163,8 @@ async function testConnectedOverride(fixtures: any) {
     'Expected connected auto value to be used when override is inactive'
   );
 
-  const overrideResult = runSimulation(overridePlan, 1, 'monthly');
-  const connectedResult = runSimulation(connectedPlan, 1, 'monthly');
+  const overrideResult = runSimulationFromLedger(overridePlan, 1, 'monthly');
+  const connectedResult = runSimulationFromLedger(connectedPlan, 1, 'monthly');
   const overrideFirst = overrideResult.series[0]?.points?.[0]?.value ?? 0;
   const connectedFirst = connectedResult.series[0]?.points?.[0]?.value ?? 0;
 
@@ -181,11 +180,13 @@ async function testConnectedOverride(fixtures: any) {
 
 async function testFrequency(fixtures: any) {
   const plan = buildWeeklyFrequencyPlan(fixtures.frequency.weeklyIncome);
-  const result = runSimulation(plan, 1, 'monthly');
+  const result = runSimulationFromLedger(plan, 1, 'monthly');
   const firstPoint = result.series[0]?.points?.[0]?.value ?? 0;
+  // Calendar-accurate: weekly income starting Thu 2026-01-01 fires on
+  // Jan 1/8/15/22/29 — five occurrences in the first month.
   assert(
     approxEqual(firstPoint, fixtures.frequency.expectedFirstPoint),
-    `Expected weekly frequency monthly-equivalent ${fixtures.frequency.expectedFirstPoint}, got ${firstPoint}`
+    `Expected weekly frequency first-month total ${fixtures.frequency.expectedFirstPoint}, got ${firstPoint}`
   );
 }
 

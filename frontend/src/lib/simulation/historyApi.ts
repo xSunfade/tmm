@@ -1,6 +1,6 @@
 import type { Checkpoint } from '../plan/types';
 import { authFetch } from '../api/authFetch';
-import type { SimulationSeries } from './simulation';
+import type { SimulationSeries } from './ledger';
 
 type HistoryResponsePoint = {
   alt?: string;

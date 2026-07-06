@@ -1,7 +1,7 @@
-import type { Alternative, Augment, PipelineState, PlanState } from '../plan/types';
+import type { Alternative, Augment, Checkpoint, PipelineState, PlanState } from '../plan/types';
 import { getEffectiveValue } from '../plan/overrideManager';
 import { applyFlowsToAlternative } from '../pipeline/engine';
-import { detectDrift, getCheckpoints } from './checkpoints';
+import { detectDrift, getCheckpoints, getLastCheckpoint } from './checkpoints';
 import { isAugmentActive } from './augments';
 import { deriveSeed } from './prng';
 
@@ -52,11 +52,24 @@ export type RecurringFlow = {
   annualGrowthPpm?: bigint;
 };
 
+/**
+ * One-time balance correction applied on day 0, before any flows. Used to seed
+ * checkpoint state (D3): the id must be deterministic (`checkpoint_adjust:<alt>:<date>`)
+ * so re-applying the same checkpoint never creates additional adjustment events
+ * (spec: CheckpointSemantics.md, ghost-adjustment prevention).
+ */
+export type LedgerInitialAdjustment = {
+  id: string;
+  accountId: string;
+  deltaCents: bigint;
+};
+
 export type LedgerScenario = {
   startDate: string;
   days: number;
   accounts: LedgerAccountInput[];
   recurringFlows: RecurringFlow[];
+  initialAdjustments?: LedgerInitialAdjustment[];
   augments?: Augment[];
   seed?: string;
 };
@@ -352,6 +365,22 @@ export function runLedgerScenario(scenario: LedgerScenario, options: LedgerRunOp
     residualInterestNumerator.set(account.id, 0n);
   }
 
+  // Day-0 state seeding (checkpoint adjustments). Applied exactly once per run with
+  // caller-provided deterministic ids, before any flows or accrual.
+  for (const adjustment of scenario.initialAdjustments || []) {
+    if (adjustment.deltaCents === 0n) continue;
+    const current = balances.get(adjustment.accountId) ?? 0n;
+    balances.set(adjustment.accountId, current + adjustment.deltaCents);
+    events.push({
+      id: adjustment.id,
+      dayIndex: 0,
+      date: scenario.startDate,
+      type: 'adjustment',
+      accountId: adjustment.accountId,
+      deltaCents: adjustment.deltaCents
+    });
+  }
+
   for (let day = 0; day <= scenario.days; day += stepDays) {
     const date = addDaysIso(scenario.startDate, day);
     const dateObject = parseIso(date);
@@ -640,6 +669,8 @@ export function buildLedgerScenarioFromPlan(plan: PlanState, days: number): Ledg
   const alt = plan.alternatives[plan.activeAlt] || { income: [], expense: [], asset: [], debt: [] };
   return buildPlanLedgerScenario({
     alt,
+    altName: plan.activeAlt,
+    checkpoint: getLastCheckpoint(plan, plan.activeAlt),
     pipeline: plan.pipeline?.byAlt?.[plan.activeAlt],
     augments: plan.augments || [],
     startDate: plan.assumptions.start,
@@ -689,7 +720,34 @@ export type ForecastOptions = {
   seed?: string;
   monteCarloRuns?: number;
   returnPercentiles?: boolean;
+  /**
+   * ISO date (YYYY-MM-DD) treated as "today" for drift detection only. Injectable so
+   * tests can pin the clock; the simulated series itself never depends on it.
+   */
+  today?: string;
 };
+
+/**
+ * Net worth the simulation projects for `todayIso`, read from the engine's daily
+ * series (exact daily resolution, independent of display granularity). Clamps to the
+ * scenario boundaries. This is the value drift must compare against (BUG-4/D3):
+ * today's projection from the checkpoint baseline, never the horizon end.
+ */
+function projectedNetWorthAtDate(
+  netWorthByDay: LedgerRunResult['netWorthByDay'],
+  todayIso: string
+): number | null {
+  if (!netWorthByDay.length) return null;
+  const first = netWorthByDay[0];
+  const last = netWorthByDay[netWorthByDay.length - 1];
+  if (todayIso <= first.date) return Number(first.valueCents) / 100;
+  if (todayIso >= last.date) return Number(last.valueCents) / 100;
+  const dayIndex = dateDiffDays(first.date, todayIso);
+  const point = netWorthByDay[dayIndex];
+  if (point && point.date === todayIso) return Number(point.valueCents) / 100;
+  const fallback = netWorthByDay.find((p) => p.date >= todayIso);
+  return fallback ? Number(fallback.valueCents) / 100 : Number(last.valueCents) / 100;
+}
 
 function percentileFromSorted(sorted: number[], percentile: number): number {
   if (!sorted.length) return 0;
@@ -718,13 +776,39 @@ function startDayFromDate(planStartIso: string, rowStartIso: string | undefined)
 }
 
 /**
+ * Finds the checkpoint snapshot row matching a current plan entity (uuid first,
+ * falling back to name for pre-uuid rows).
+ */
+function findCheckpointRow<T extends { uuid?: string; name?: string }>(
+  rows: T[] | undefined,
+  entity: { uuid?: string; name?: string }
+): T | undefined {
+  if (!rows || rows.length === 0) return undefined;
+  if (entity.uuid) {
+    const byUuid = rows.find((row) => row.uuid && row.uuid === entity.uuid);
+    if (byUuid) return byUuid;
+  }
+  return rows.find((row) => !row.uuid && !!entity.name && row.name === entity.name);
+}
+
+/**
  * Builds a fully-wired ledger scenario from a plan alternative. This is the single
  * source of truth that maps plan rows (income raises, expense inflation, per-row start
  * dates, asset APY + recurring contributions, debt APR + payments) and pipeline edges
  * (routed contributions / extra debt payments) into the deterministic ledger engine.
+ *
+ * Checkpoint semantics (D3, CheckpointSemantics.md): when the latest checkpoint is
+ * provided, it is the observed baseline — the scenario starts at the checkpoint date,
+ * asset/debt balances seed from the checkpoint snapshot (Plaid-connected entities use
+ * their current live value, which takes precedence over the checkpoint), and any
+ * residual between the checkpoint's recorded net worth and the seeded balances enters
+ * as one deterministic day-0 cash adjustment: `checkpoint_adjust:<alt>:<date>`.
+ * Flow and rate configuration always comes from the current plan rows.
  */
 export function buildPlanLedgerScenario(params: {
   alt: Alternative;
+  altName?: string;
+  checkpoint?: Checkpoint | null;
   pipeline?: PipelineState['byAlt'][string] | null;
   augments?: Augment[];
   startDate: string;
@@ -732,8 +816,10 @@ export function buildPlanLedgerScenario(params: {
   seed?: string;
   defaultInflationPct?: number;
 }): LedgerScenario {
-  const { startDate, days, seed } = params;
+  const { days, seed } = params;
   const defaultInflationPct = params.defaultInflationPct ?? 0;
+  const checkpoint = params.checkpoint || null;
+  const startDate = checkpoint ? String(checkpoint.date).slice(0, 10) : params.startDate;
 
   // Clone so pipeline-driven mutations never touch the caller's plan state.
   const alt: Alternative = JSON.parse(JSON.stringify(params.alt));
@@ -745,6 +831,23 @@ export function buildPlanLedgerScenario(params: {
     { id: 'cash', name: 'cash', kind: 'cash', balanceCents: 0n }
   ];
   const recurringFlows: RecurringFlow[] = [];
+  const initialAdjustments: LedgerInitialAdjustment[] = [];
+
+  /**
+   * Seed balance for an asset/debt entity. Precedence per CheckpointSemantics.md:
+   * live/connected value > checkpoint snapshot value > current plan value.
+   */
+  const seededBalance = (
+    entity: Parameters<typeof getEffectiveValue>[0],
+    checkpointRows: Array<Parameters<typeof getEffectiveValue>[0]> | undefined
+  ): number => {
+    const currentValue = getEffectiveValue(entity);
+    if (!checkpoint) return currentValue;
+    if (entity.dataSource === 'connected') return currentValue;
+    const snapshot = findCheckpointRow(checkpointRows, entity);
+    if (!snapshot) return currentValue;
+    return getEffectiveValue(snapshot);
+  };
 
   for (const r of alt.income) {
     recurringFlows.push({
@@ -773,12 +876,17 @@ export function buildPlanLedgerScenario(params: {
     });
   }
 
+  let seededAssetsCents = 0n;
+  let seededDebtsCents = 0n;
+
   for (const a of alt.asset) {
+    const balanceCents = centsFromNumber(seededBalance(a, checkpoint?.assets));
+    seededAssetsCents += balanceCents;
     accounts.push({
       id: `asset:${a.uuid}`,
       name: a.name,
       kind: 'asset',
-      balanceCents: centsFromNumber(getEffectiveValue(a)),
+      balanceCents,
       annualRatePpm: pctToPpm(Number(a.apy) || 0)
     });
     const recurAmt = Number(a.recurAmt) || 0;
@@ -796,11 +904,13 @@ export function buildPlanLedgerScenario(params: {
   }
 
   for (const d of alt.debt) {
+    const balanceCents = centsFromNumber(seededBalance(d, checkpoint?.debts));
+    seededDebtsCents += balanceCents;
     accounts.push({
       id: `debt:${d.uuid}`,
       name: d.name,
       kind: 'debt',
-      balanceCents: centsFromNumber(getEffectiveValue(d)),
+      balanceCents,
       annualRatePpm: pctToPpm(Number(d.apr) || 0),
       allowNegative: false
     });
@@ -830,13 +940,29 @@ export function buildPlanLedgerScenario(params: {
     }
   }
 
+  if (checkpoint) {
+    // Cash (and any value the checkpoint observed beyond the seeded asset/debt rows)
+    // enters as a single deterministic adjustment so re-applying the same checkpoint
+    // can never create additional adjustment events.
+    const targetNetWorthCents = centsFromNumber(Number(checkpoint.netWorth) || 0);
+    const residualCents = targetNetWorthCents - seededAssetsCents + seededDebtsCents;
+    if (residualCents !== 0n) {
+      initialAdjustments.push({
+        id: `checkpoint_adjust:${params.altName || checkpoint.alt || 'default'}:${startDate}`,
+        accountId: 'cash',
+        deltaCents: residualCents
+      });
+    }
+  }
+
   return {
     startDate,
     days,
     seed,
     augments: params.augments || [],
     accounts,
-    recurringFlows
+    recurringFlows,
+    initialAdjustments
   };
 }
 
@@ -860,8 +986,12 @@ export function runSimulationFromLedger(
   const audit: string[] = [];
   let drift: SimulationResult['drift'] = null;
 
+  const todayIso = String(options.today || '').slice(0, 10) || new Date().toISOString().slice(0, 10);
+
   for (const altName of enabled) {
     const alt = plan.alternatives[altName] || { income: [], expense: [], asset: [], debt: [] };
+    // D3: the latest checkpoint is the observed baseline the projection seeds from.
+    const lastCheckpoint = getLastCheckpoint(plan, altName);
     const days = Math.round(years * 365);
     const runPointSets: Array<{ date: Date; value: number }[]> = [];
     let firstRun: LedgerRunResult | null = null;
@@ -869,6 +999,8 @@ export function runSimulationFromLedger(
       const runSeed = deriveSeed(baseSeed, runIndex, altName);
       const scenario = buildPlanLedgerScenario({
         alt,
+        altName,
+        checkpoint: lastCheckpoint,
         pipeline: plan.pipeline?.byAlt?.[altName],
         augments: plan.augments || [],
         startDate: plan.assumptions.start,
@@ -932,12 +1064,17 @@ export function runSimulationFromLedger(
         }))
       });
     }
-    if (!drift && medianSeriesPoints.length > 0) {
+    if (!drift && firstRun && firstRun.netWorthByDay.length > 0) {
       const currentNetWorth =
         (alt.asset || []).reduce((sum, a) => sum + getEffectiveValue(a), 0) -
         (alt.debt || []).reduce((sum, d) => sum + getEffectiveValue(d), 0);
-      const projected = medianSeriesPoints[medianSeriesPoints.length - 1].value;
-      const driftInfo = detectDrift(plan, altName, currentNetWorth, projected);
+      // BUG-4 fix: compare today's actuals to TODAY's projection from the checkpoint
+      // baseline — never the horizon-end value.
+      const projected = projectedNetWorthAtDate(firstRun.netWorthByDay, todayIso);
+      const driftInfo =
+        projected === null
+          ? null
+          : detectDrift(plan, altName, currentNetWorth, projected, parseIso(todayIso));
       if (driftInfo?.detected) {
         drift = {
           alt: altName,

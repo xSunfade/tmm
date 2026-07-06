@@ -63,6 +63,27 @@ function addMonths(date: Date, months: number) {
   return next;
 }
 
+/** Simulation series dates are UTC midnights; chart boundaries must match. */
+function startOfUtcDay(date: Date = new Date()): Date {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+}
+
+function timeToPlotX(time: number, view: ViewWindow, plotWidth: number, pad: number = 36): number {
+  const viewRange = view.end - view.start || 1;
+  return pad + ((time - view.start) / viewRange) * (plotWidth - pad * 2);
+}
+
+/** X position where the solid projection line begins (matches clippedSeries). */
+function getProjectionStartMs(clippedSeries: SimulationSeries[]): number {
+  let first = Infinity;
+  clippedSeries.forEach((s) => {
+    if (s.points.length > 0) {
+      first = Math.min(first, s.points[0].date.getTime());
+    }
+  });
+  return Number.isFinite(first) ? first : startOfUtcDay().getTime();
+}
+
 function getValueAtTime(points: { date: Date; value: number }[], time: number) {
   if (!points.length) return null;
   const first = points[0].date.getTime();
@@ -249,8 +270,13 @@ export function NetWorthChart({
   const [view, setView] = useState<ViewWindow | null>(null);
   const [hoverX, setHoverX] = useState<number | null>(null);
   const [hoverDate, setHoverDate] = useState<Date | null>(null);
-  const [chartSize, setChartSize] = useState<{ width: number; height: number }>({ width: 0, height });
   const [sliderSize, setSliderSize] = useState<{ width: number; height: number }>({ width: 0, height: 60 });
+  // Exact time→pixel mapping used by the last canvas draw. DOM overlays position
+  // from this so they can never drift from what is actually plotted.
+  const [renderMap, setRenderMap] = useState<{ start: number; end: number; width: number } | null>(null);
+  // Ref twin of renderMap so mouse handlers read the draw mapping synchronously
+  // (state updates lag one frame behind the canvas).
+  const renderMapRef = useRef<{ start: number; end: number; width: number } | null>(null);
   const [hoveredAugment, setHoveredAugment] = useState<Augment | null>(null);
   const [augmentTooltipStyle, setAugmentTooltipStyle] = useState<{ left: number; top: number } | null>(null);
   const tooltipRef = useRef<HTMLDivElement | null>(null);
@@ -263,8 +289,7 @@ export function NetWorthChart({
   const MIN_VIEW_UPDATE_INTERVAL_MS = 16;
 
   const clippedSeries = useMemo(() => {
-    const todayCutoff = new Date();
-    todayCutoff.setHours(0, 0, 0, 0);
+    const todayCutoff = startOfUtcDay();
     const todayMs = todayCutoff.getTime();
 
     const lastHistoricalValueByAlt = new Map<string, number>();
@@ -291,9 +316,7 @@ export function NetWorthChart({
   }, [series, historicalSeries]);
 
   const clippedPercentileSeries = useMemo(() => {
-    const todayCutoff = new Date();
-    todayCutoff.setHours(0, 0, 0, 0);
-    const todayMs = todayCutoff.getTime();
+    const todayMs = startOfUtcDay().getTime();
     return percentileSeries.map((band) => ({
       ...band,
       points: band.points.filter((p) => p.date.getTime() >= todayMs)
@@ -309,19 +332,6 @@ export function NetWorthChart({
       setView({ start: bounds.minX, end: bounds.maxX });
     }
   }, [bounds.minX, bounds.maxX]);
-
-  useEffect(() => {
-    if (!containerRef.current) return;
-    const element = containerRef.current;
-    const updateSize = () => {
-      const rect = element.getBoundingClientRect();
-      setChartSize({ width: rect.width, height });
-    };
-    updateSize();
-    const observer = new ResizeObserver(() => updateSize());
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [height]);
 
   useEffect(() => {
     if (!sliderRef.current) return;
@@ -388,6 +398,15 @@ export function NetWorthChart({
         xToPx = (time: number) => pad + ((time - effectiveView.start) / viewRange) * (rect.width - pad * 2);
         pointsInView = collectPoints(effectiveView);
       }
+
+      // Publish the exact mapping used for this draw so DOM overlays (augment
+      // icons) and mouse handlers share the same coordinate space as the data.
+      renderMapRef.current = { start: effectiveView.start, end: effectiveView.end, width: rect.width };
+      setRenderMap((prev) =>
+        prev && prev.start === effectiveView.start && prev.end === effectiveView.end && prev.width === rect.width
+          ? prev
+          : { start: effectiveView.start, end: effectiveView.end, width: rect.width }
+      );
 
     let minY = Math.min(...pointsInView);
     let maxY = Math.max(...pointsInView);
@@ -565,10 +584,40 @@ export function NetWorthChart({
         ctx.setLineDash([]);
       });
 
+      // Today marker: same xToPx transform as the data at the projection start.
+      {
+        const todayX = xToPx(getProjectionStartMs(clippedSeries));
+        if (todayX >= pad && todayX <= rect.width - pad) {
+          ctx.strokeStyle = 'rgba(250, 204, 21, 0.7)';
+          ctx.lineWidth = 2;
+          ctx.setLineDash([5, 5]);
+          ctx.beginPath();
+          ctx.moveTo(todayX, pad);
+          ctx.lineTo(todayX, height - pad);
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          const label = 'Today';
+          ctx.font = '600 10px system-ui';
+          const labelWidth = ctx.measureText(label).width;
+          const boxWidth = labelWidth + 12;
+          const boxHeight = 17;
+          const boxX = todayX - 6 - boxWidth;
+          const boxY = pad + 4;
+          ctx.fillStyle = 'rgba(2, 6, 23, 0.8)';
+          ctx.beginPath();
+          ctx.roundRect(boxX, boxY, boxWidth, boxHeight, 4);
+          ctx.fill();
+          ctx.fillStyle = '#facc15';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(label, boxX + 6, boxY + boxHeight / 2 + 0.5);
+          ctx.textBaseline = 'alphabetic';
+        }
+      }
+
       if (hoverDate && hoverX !== null && hoverX >= pad && hoverX <= rect.width - pad) {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const isBeforeToday = hoverDate.getTime() < today.getTime();
+        const todayMs = startOfUtcDay().getTime();
+        const isBeforeToday = hoverDate.getTime() < todayMs;
         const headerText = isBeforeToday ? 'HISTORY' : 'FUTURE PROJECTION';
         const headerColor = isBeforeToday ? 'rgba(49,195,255,0.9)' : 'rgba(106,227,255,0.9)';
         const dateLabel =
@@ -667,16 +716,30 @@ export function NetWorthChart({
     let dragStartX = 0;
     let dragStartView: ViewWindow | null = null;
 
+    const pad = 36;
+    // Invert the exact transform used by the canvas draw pass (pad-aware,
+    // clamped view). The previous padless `x / rect.width` inverse skewed
+    // cursor→date conversions by up to `pad` px worth of time — an error that
+    // grows with the visible range, i.e. worst when fully zoomed out.
+    const xToTime = (x: number, fallbackWidth: number) => {
+      const map = renderMapRef.current ?? { start: view.start, end: view.end, width: fallbackWidth };
+      const plotWidth = Math.max(1, map.width - pad * 2);
+      const ratio = (x - pad) / plotWidth;
+      return map.start + (map.end - map.start) * ratio;
+    };
+
     const onWheel = (event: WheelEvent) => {
       event.preventDefault();
       const rect = canvas.getBoundingClientRect();
-      const cursorRatio = (event.clientX - rect.left) / rect.width;
-      const range = view.end - view.start;
+      const map = renderMapRef.current ?? { start: view.start, end: view.end, width: rect.width };
+      const plotWidth = Math.max(1, map.width - pad * 2);
+      const cursorRatio = Math.min(1, Math.max(0, (event.clientX - rect.left - pad) / plotWidth));
+      const range = map.end - map.start;
       const zoom = event.deltaY > 0 ? 1.2 : 0.8;
       const totalRange = bounds.maxX - bounds.minX;
       const minRange = totalRange / 100;
       const newRange = Math.min(totalRange, Math.max(range * zoom, minRange));
-      const center = view.start + range * cursorRatio;
+      const center = map.start + range * cursorRatio;
       let nextStart = center - newRange * cursorRatio;
       let nextEnd = center + newRange * (1 - cursorRatio);
       if (nextStart < bounds.minX) {
@@ -703,7 +766,7 @@ export function NetWorthChart({
       const rect = canvas.getBoundingClientRect();
       const dx = event.clientX - dragStartX;
       const range = dragStartView.end - dragStartView.start;
-      const shift = (dx / rect.width) * range;
+      const shift = (dx / Math.max(1, rect.width - pad * 2)) * range;
       const nextStart = dragStartView.start - shift;
       const nextEnd = dragStartView.end - shift;
       setView(clampView(bounds, nextStart, nextEnd));
@@ -718,9 +781,8 @@ export function NetWorthChart({
     const onMove = (event: MouseEvent) => {
       const rect = canvas.getBoundingClientRect();
       const x = event.clientX - rect.left;
-      const time = view.start + ((view.end - view.start) * x) / rect.width;
       setHoverX(x);
-      setHoverDate(new Date(time));
+      setHoverDate(new Date(xToTime(x, rect.width)));
     };
 
     const onLeave = () => {
@@ -745,9 +807,9 @@ export function NetWorthChart({
   }, [bounds.maxX, bounds.minX, series, view]);
 
   const augmentMarkers = useMemo(() => {
-    if (!view || chartSize.width === 0) return [];
+    if (!renderMap) return [];
     const pad = 36;
-    const viewRange = view.end - view.start || 1;
+    const effectiveView = { start: renderMap.start, end: renderMap.end };
     const enabled = augments.filter((augment) => augment.enabled && augment.activation?.startDate);
     const grouped = new Map<string, Augment[]>();
     enabled.forEach((augment) => {
@@ -758,13 +820,12 @@ export function NetWorthChart({
     const markers: Array<{ augment: Augment; x: number; y: number; color: string }> = [];
     grouped.forEach((items, dateKey) => {
       const startDate = new Date(dateKey);
-      const baseX =
-        pad + ((startDate.getTime() - view.start) / viewRange) * (chartSize.width - pad * 2);
+      const baseX = timeToPlotX(startDate.getTime(), effectiveView, renderMap.width, pad);
       const step = 12;
       const offsetStart = -((items.length - 1) * step) / 2;
       items.forEach((augment, index) => {
         let x = baseX + offsetStart + index * step;
-        x = Math.max(pad, Math.min(chartSize.width - pad, x));
+        x = Math.max(pad, Math.min(renderMap.width - pad, x));
         markers.push({
           augment,
           x,
@@ -773,19 +834,8 @@ export function NetWorthChart({
         });
       });
     });
-    return markers.filter((marker) => marker.x >= 36 && marker.x <= chartSize.width - 36);
-  }, [augments, chartSize.width, view]);
-
-  const todayMarker = useMemo(() => {
-    if (!view || chartSize.width === 0) return null;
-    const pad = 36;
-    const viewRange = view.end - view.start || 1;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const x = pad + ((today.getTime() - view.start) / viewRange) * (chartSize.width - pad * 2);
-    if (x < pad || x > chartSize.width - pad) return null;
-    return { x, top: pad };
-  }, [view, chartSize.width]);
+    return markers.filter((marker) => marker.x >= 36 && marker.x <= renderMap.width - 36);
+  }, [augments, renderMap]);
 
   useEffect(() => {
     if (!sliderRef.current || !sliderCanvasRef.current || !view) return;
@@ -994,9 +1044,10 @@ export function NetWorthChart({
       <div ref={containerRef} className="relative" style={{ height }}>
         <canvas
           ref={canvasRef}
-          className={`h-full w-full rounded-lg border border-slate-800 bg-slate-950 transition-[filter,opacity] duration-300 ${
+          className={`h-full w-full rounded-lg bg-slate-950 transition-[filter,opacity] duration-300 ${
             isUpdating ? 'pointer-events-none opacity-35 blur-[2px]' : ''
           }`}
+          style={{ outline: '1px solid #1e293b', outlineOffset: '-1px' }}
         />
         <ChartWaveOverlay active={isUpdating} />
         <div className="pointer-events-none absolute inset-0 z-10">
@@ -1019,21 +1070,6 @@ export function NetWorthChart({
             </div>
           ))}
         </div>
-        {todayMarker ? (
-          <div className="pointer-events-none absolute inset-0 z-30">
-            <div
-              className="absolute border-l-2 border-dashed border-yellow-400/70"
-              style={{ left: todayMarker.x, top: todayMarker.top, height: height - todayMarker.top * 2 }}
-              aria-hidden
-            />
-            <div
-              className="absolute rounded bg-slate-950/80 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-yellow-400 shadow-sm"
-              style={{ left: todayMarker.x - 4, top: todayMarker.top + 4, transform: 'translateX(-100%)' }}
-            >
-              Today
-            </div>
-          </div>
-        ) : null}
       </div>
       {hoveredAugment && augmentTooltipStyle ? (
         <div

@@ -54,18 +54,25 @@ export function createCheckpoint(plan: PlanState, altName: string, type: Checkpo
   return checkpoint;
 }
 
+/**
+ * Compares today's actuals (`currentNetWorth`) against today's projection from the
+ * latest checkpoint baseline (`projectedNetWorth`). Per D3/BUG-4 the projection must
+ * be the value at `now` — never the end of the simulation horizon. `now` is injectable
+ * so callers (and tests) can pin the clock.
+ */
 export function detectDrift(
   plan: PlanState,
   altName: string,
   currentNetWorth: number,
-  projectedNetWorth: number
+  projectedNetWorth: number,
+  now: Date = new Date()
 ): { detected: boolean; variance?: number; daysSince?: number; checkpointDate?: string } | null {
   const lastCheckpoint = getLastCheckpoint(plan, altName);
   if (!lastCheckpoint) return null;
   if (!projectedNetWorth || projectedNetWorth === 0) return null;
 
   const daysSince = Math.floor(
-    (new Date().getTime() - new Date(lastCheckpoint.date).getTime()) / (1000 * 60 * 60 * 24)
+    (now.getTime() - new Date(lastCheckpoint.date).getTime()) / (1000 * 60 * 60 * 24)
   );
   const variance = Math.abs(currentNetWorth - projectedNetWorth) / Math.abs(projectedNetWorth);
   const highVarianceThreshold = 0.25;

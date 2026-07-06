@@ -4,9 +4,3 @@ export function addMonths(start: Date, months: number): Date {
   return date;
 }
 
-export function addDays(start: Date, days: number): Date {
-  const date = new Date(start);
-  date.setDate(date.getDate() + days);
-  return date;
-}
-

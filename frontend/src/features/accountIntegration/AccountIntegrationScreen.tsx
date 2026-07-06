@@ -265,10 +265,14 @@ export function AccountIntegrationScreen() {
   }, [plaidEnabled, plaidBaseUrl, appState.auth.userId]);
 
   const runPlaidSyncTrigger = React.useCallback(
-    async (userInitiated: boolean) => {
+    async (userInitiated: boolean, options: { quietSkips?: boolean } = {}) => {
       if (!plaidEnabled || !plaidBaseUrl || !appState.auth.userId) return null;
       const result = await triggerPlaidTransactionsSync(plaidBaseUrl, { userInitiated });
-      setPlaidSyncFeedback(describePlaidSyncResult(result));
+      // Background (page-visit) triggers are expected to be skipped by the server's
+      // 15-minute gate most of the time — don't surface that as user-facing feedback.
+      if (!(options.quietSkips && result.skipped)) {
+        setPlaidSyncFeedback(describePlaidSyncResult(result));
+      }
       if (result.running) {
         setPlaidSyncOverlayVisible(true);
       } else if (result.ok && (result.reason === 'accounts_refresh_only' || !result.skipped)) {
@@ -356,7 +360,11 @@ export function AccountIntegrationScreen() {
         setPlaidSyncOverlayVisible(true);
         return;
       }
-      await runPlaidSyncTrigger(true);
+      // Page visits are NOT user-initiated syncs: passing false keeps the server's
+      // 15-minute outer gate and per-item freshness checks in force, so repeat visits
+      // don't enqueue redundant Plaid sync jobs. Only the explicit "Refresh bank data"
+      // button bypasses the gates (user_initiated: true).
+      await runPlaidSyncTrigger(false, { quietSkips: true });
       if (cancelled) return;
       const statusAfterTrigger = await fetchPlaidSyncStatus();
       if (!cancelled && statusAfterTrigger?.running) {

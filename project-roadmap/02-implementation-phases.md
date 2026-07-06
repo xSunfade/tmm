@@ -6,6 +6,8 @@ Effort assumes one experienced developer working with the AI workforce defined i
 
 **Total: ~10–13 focused weeks to Gate C.**
 
+**Status (2026-07-06):** Phase 0 ✅ · Phase 1 ✅ · Phase 2 in progress. Items 3.3, 3.4, and 3.5 were completed **early** (PR #31: ledger seeds from latest checkpoint per D3, drift-at-today, legacy engine deleted, goldens on ledger) because they were cheap to do together and Phase 2's revision safety-net does not depend on them; 3.1/3.2 (domain model v3, positions) remain Phase 3 work.
+
 ## Sequencing rationale (why this order)
 
 1. **Hygiene first** (Phase 0) — everything after this happens on branches with CI actually guarding the money paths.
@@ -16,7 +18,7 @@ Effort assumes one experienced developer working with the AI workforce defined i
 
 ---
 
-## Phase 0 — Repo, CI, and audit hygiene (~3–4 days)
+## Phase 0 — Repo, CI, and audit hygiene (~3–4 days) ✅ COMPLETE
 
 Goal: a repo where what exists is real, what's real is committed, and CI guards regressions.
 
@@ -32,7 +34,7 @@ Goal: a repo where what exists is real, what's real is committed, and CI guards 
 
 Dependencies: none. Everything else builds on 0.1 and 0.6.
 
-## Phase 1 — Stability and silent-failure fixes (~1 week)
+## Phase 1 — Stability and silent-failure fixes (~1 week) ✅ COMPLETE
 
 Goal: nothing known-broken; the app never lies about save state; failures are visible. (Engine-semantics work moves to Phase 3 — see rationale.)
 
@@ -48,7 +50,7 @@ Goal: nothing known-broken; the app never lies about save state; failures are vi
 
 Regression policy applies from here forward: every bug fix lands with a test in the same PR.
 
-## Phase 2 — Server-side persistence: Supabase becomes ASOT (~2 weeks)
+## Phase 2 — Server-side persistence: Supabase becomes ASOT (~2 weeks) ◀ IN PROGRESS
 
 Goal: user data cannot be lost; the server is authoritative (ADR-1).
 
@@ -74,9 +76,9 @@ Goal: one authoritative engine running the model the UI describes, on a domain m
 |---|---|---|---|---|
 | 3.1 | Define domain model types: Account, Position/Holding, Transaction, CashFlow, Checkpoint, Assumptions; plan schema v3 + migration from v2 (with fixture tests for old shapes) | [C] | D4 | v2 plans migrate losslessly; fixtures for each historical shape |
 | 3.2 | Position-based market assets in the ledger: deterministic price path from expected return; contributions buy quantity at `price(t)`; DCA correctness test | [C] | BUG-6, D4 | Golden tests: position value = qty × price; DCA scenario matches hand-computed result |
-| 3.3 | Checkpoint semantics: engine seeds state from latest checkpoint; deterministic adjustment IDs per spec | [C] | BUG-5, D3 | Pre/post-checkpoint golden tests; spec updated where needed |
-| 3.4 | Drift detection compares against **today's** projection from the checkpoint baseline | [H] | BUG-4 | Unit test with known checkpoint + expected variance |
-| 3.5 | Migrate golden/determinism/frequency tests to the ledger; delete `simulation.ts` | [H] | FRAGILE-1 | No legacy imports; all goldens target ledger |
+| 3.3 | ✅ DONE EARLY (PR #31) — Checkpoint semantics: engine seeds state from latest checkpoint; deterministic adjustment IDs per spec | [C] | BUG-5, D3 | Pre/post-checkpoint golden tests; spec updated where needed |
+| 3.4 | ✅ DONE EARLY (PR #31) — Drift detection compares against **today's** projection from the checkpoint baseline | [H] | BUG-4 | Unit test with known checkpoint + expected variance |
+| 3.5 | ✅ DONE EARLY (PR #31) — Migrate golden/determinism/frequency tests to the ledger; delete `simulation.ts` | [H] | FRAGILE-1 | No legacy imports; all goldens target ledger |
 | 3.6 | Engine edge cases: negative cash behavior defined + tested; `recurring`/`conditional` augments implemented or hidden in UI | [M] | stability edge cases | Tests or UI removal |
 | 3.7 | XLSX/Sheets import-export mapped to schema v3 (keep reading old layouts) | [H] | D5 | Sample workbook + legacy sheet import green |
 | 3.8 | UX: Monte Carlo band + Resample explainer; sanity warnings (debt never zero, expense > income) | [M] | UX-D/F | Tooltips/warnings in place |

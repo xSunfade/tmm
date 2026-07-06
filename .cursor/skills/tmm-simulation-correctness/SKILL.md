@@ -30,7 +30,9 @@ The number on the chart is the product. Follow this procedure for any simulation
 
 ## Common traps in this codebase
 
-- The legacy float engine (`simulation.ts`) is dead in production but may still be referenced by tests until Phase 3.5 completes — never "fix" behavior by matching it; the ledger + specs are the truth.
+- The legacy float engine (`simulation.ts`) was **deleted** (Phase 3.5, PR #31). If you find references to it, they're stale — the ledger (`ledger.ts`) + specs are the only truth. Never reintroduce float math or FPM (`×4.345`) frequency approximations; the ledger is calendar-accurate.
+- Checkpoint seeding is live (D3): `buildPlanLedgerScenario` starts at the latest checkpoint's date and reconciles observed cash via one deterministic `checkpoint_adjust:<alt>:<date>` day-0 adjustment. Engine tests live in `tests/simulation/checkpoint-drift.test.ts` — extend that suite for checkpoint/drift changes.
+- Drift uses `ForecastOptions.today` (drift metadata only — must never affect the simulated series) and compares against today's projection from the exact daily series.
 - `lastRun.series` cached output must not leak into persistence or fingerprints.
 - The 16-entry result cache is keyed by full input fingerprint — if you add an engine input, add it to the fingerprint or stale results will be served.
 - Monte Carlo today = augment probability only. Don't let copy or code imply market-path simulation.

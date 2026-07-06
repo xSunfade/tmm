@@ -4,9 +4,11 @@ Sequenced phases from today's state to public MVP and beyond. Effort assumes one
 
 Legend: **[C]**ritical / **[H]**igh / **[M]**edium / **[L]**ow.
 
+**Status (2026-07-06):** Phase 0 ✅ complete · Phase 1 ✅ complete (1.5/1.6 landed via PR #31 — single ledger engine, checkpoint seeding per D3, drift-at-today) · Phase 2 in progress.
+
 ---
 
-## Phase 0 — Repo hygiene and audit cleanup (2–4 days)
+## Phase 0 — Repo hygiene and audit cleanup (2–4 days) ✅ COMPLETE
 
 Goal: a repo where what exists is real and what's real is committed.
 
@@ -22,9 +24,11 @@ Goal: a repo where what exists is real and what's real is committed.
 
 Dependencies: none. Do 0.1 first (protects in-flight work).
 
-## Phase 1 — Stability fixes (1–1.5 weeks)
+## Phase 1 — Stability fixes (1–1.5 weeks) ✅ COMPLETE
 
 Goal: nothing known-broken; no silent failures; one simulation truth.
+
+All eight items verified done (1.1–1.4, 1.7–1.8 in earlier PRs; 1.5 + 1.6 in PR #31, 2026-07-06). Note: 1.6's "needs decision" was resolved by D3 in `project-roadmap/00-decision-register.md` — checkpoints are observed ground truth; the ledger seeds from the latest checkpoint and drift compares at today.
 
 | # | Item | Pri | Effort | Files | Acceptance (details in stability/UX audits) |
 |---|---|---|---|---|---|
@@ -39,7 +43,7 @@ Goal: nothing known-broken; no silent failures; one simulation truth.
 
 Dependencies: 1.5 before 1.6 (write engine tests once, against the ledger).
 
-## Phase 2 — Data and persistence hardening (1.5–2 weeks)
+## Phase 2 — Data and persistence hardening (1.5–2 weeks) ◀ IN PROGRESS
 
 Goal: user data cannot be lost.
 

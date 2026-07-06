@@ -1,10 +1,12 @@
 # Stability and Bug Audit
 
-Confirmed bugs first, then fragile areas and reliability risks. File references are to current repo state.
+Confirmed bugs first, then fragile areas and reliability risks. File references are to repo state **at audit time** — several findings are since fixed and marked ✅ RESOLVED below.
+
+**Resolution status (2026-07-06):** BUG-1 ✅ · BUG-2 ✅ · BUG-3 ✅ · BUG-4 ✅ · BUG-5 ✅ · BUG-7 ✅ (legacy engine deleted) · FRAGILE-1 ✅ · FRAGILE-2 ✅ · FRAGILE-3 ✅ · FRAGILE-5/6 ✅. Open: BUG-6 (Ticker modeling — deferred to the D4 domain-model workstream).
 
 ## Confirmed bugs (from code)
 
-### BUG-1: `GET /api/plaid/items` throws on every call — Critical
+### BUG-1: `GET /api/plaid/items` throws on every call — Critical ✅ RESOLVED
 
 `backend/server.js` (~line 2518): the handler builds `items` from `rows` but then reads `connectedItemIds.size`, a variable that is **not defined in that scope** → `ReferenceError` → 500 on every request.
 
@@ -15,28 +17,28 @@ Confirmed bugs first, then fragile areas and reliability risks. File references 
 - **Dependencies:** none
 - **Acceptance criteria:** endpoint returns `{ items, item_count }` for a TMM+ user with 0, 1, and N items; a regression test covers it.
 
-### BUG-2: `removeToken` post-delete check inverted — High
+### BUG-2: `removeToken` post-delete check inverted — High ✅ RESOLVED
 
 `backend/storage/supabaseStorage.js` (lines ~166–175): after deleting a token it re-checks existence and throws "Token not found" when the token **still exists** — i.e., the error message and condition are inverted relative to intent, and a successful delete path may behave incorrectly.
 
 - **Priority:** High · **Effort:** ~1 hour · **Files:** `backend/storage/supabaseStorage.js`
 - **Acceptance criteria:** deleting an existing token succeeds silently; deleting a missing token produces a clear, correct error; unit test added.
 
-### BUG-3: `POST /api/plaid/remove-item` leaves the encrypted access token behind — High
+### BUG-3: `POST /api/plaid/remove-item` leaves the encrypted access token behind — High ✅ RESOLVED
 
 `backend/server.js` (~lines 3439–3461): deletes the item's accounts but never removes the `plaid_tokens` row or calls Plaid `itemRemove`. Orphaned live credentials accumulate (data-minimization and Plaid billing concern; Plaid may keep charging for connected items).
 
 - **Priority:** High · **Effort:** 2–4 hours · **Files:** `backend/server.js`, `backend/tokenStore.js`
 - **Acceptance criteria:** remove-item deletes accounts, token row, and (best-effort) revokes the item at Plaid; behavior documented vs `/api/plaid/disconnect`.
 
-### BUG-4: Ledger drift detection compares against the wrong projection — High (correctness)
+### BUG-4: Ledger drift detection compares against the wrong projection — High (correctness) ✅ RESOLVED (PR #31)
 
 `frontend/src/lib/simulation/ledger.ts` (~lines 935–940): drift compares current net worth to the **last point of the simulation horizon** (potentially 30 years out) instead of today's interpolated projection. The legacy engine (`simulation.ts` lines 368–394) did this correctly. Result: drift warnings are misleading or never fire.
 
 - **Priority:** High · **Effort:** 0.5–1 day · **Files:** `frontend/src/lib/simulation/ledger.ts`, `checkpoints.ts`
 - **Acceptance criteria:** drift uses the projected value at today's date; unit test with a known checkpoint and expected variance passes.
 
-### BUG-5: Checkpoints do not affect the production simulation — High (correctness/spec violation)
+### BUG-5: Checkpoints do not affect the production simulation — High (correctness/spec violation) ✅ RESOLVED (PR #31, per D3)
 
 `tests/validation/spec/CheckpointSemantics.md` specifies checkpoints as state-reset events with deterministic adjustment IDs. The production ledger (`buildPlanLedgerScenario`) ignores checkpoints entirely; they appear only as chart overlay points. The legacy engine implemented the reset. Users who "correct" their plan with a checkpoint will see projections that ignore the correction.
 
@@ -51,25 +53,25 @@ Ledger treats `mode: 'Ticker'` assets as flat balance + APY (`ledger.ts` ~lines 
 - **Priority:** Medium · **Effort:** 2–5 days (or explicitly document/remove Ticker mode for MVP)
 - **Acceptance criteria:** either Ticker assets simulate with price growth + contributions buying quantity, or the UI/docs clearly state Ticker values are simulated as APY balances.
 
-### BUG-7: Legacy daily mode ignores checkpoint start (`simulation.ts` line ~238) — Low
+### BUG-7: Legacy daily mode ignores checkpoint start (`simulation.ts` line ~238) — Low ✅ RESOLVED (legacy engine deleted in PR #31)
 
 Test-only engine; matters because tests still exercise it. Fold into the dual-engine cleanup below.
 
 ## Fragile areas and reliability risks
 
-### FRAGILE-1: Dual simulation engines — High
+### FRAGILE-1: Dual simulation engines — High ✅ RESOLVED (PR #31)
 
 The float-based `simulation.ts` is dead in production but still drives golden-fixture and determinism tests. The two engines diverge on checkpoints, Ticker, and calendar scheduling, so "passing tests" doesn't fully validate the production path.
 
 - **Recommendation:** migrate all tests to the ledger engine, then delete `simulation.ts` (Phase 1). **Effort:** 2–3 days. **Acceptance:** no imports of `simulation.ts` outside history; all golden fixtures target the ledger.
 
-### FRAGILE-2: Silent simulation failure in the dashboard — High
+### FRAGILE-2: Silent simulation failure in the dashboard — High ✅ RESOLVED (error state + retry in `DashboardScreen`)
 
 `DashboardScreen.tsx` (~line 104) swallows worker errors with `.catch(() => {})`. A failed simulation leaves a stale or empty chart with no message — the worst kind of failure for a trust-critical product.
 
 - **Recommendation:** surface an error state in the chart area with a retry. **Effort:** 0.5 day.
 
-### FRAGILE-3: No React error boundary — High
+### FRAGILE-3: No React error boundary — High ✅ RESOLVED (`ErrorBoundary` wraps app in `main.tsx`)
 
 No `ErrorBoundary` anywhere in `frontend/src`. Any render-time exception white-screens the entire app.
 
@@ -81,13 +83,13 @@ No `ErrorBoundary` anywhere in `frontend/src`. Any render-time exception white-s
 
 - **Recommendation (MVP):** run exactly one backend instance and document it. Defer distributed rate limiting/queues (see `architecture-upgrade-plan.md`).
 
-### FRAGILE-5: `plaidClient.js` throws at import when Plaid creds are absent — Medium
+### FRAGILE-5: `plaidClient.js` throws at import when Plaid creds are absent — Medium ✅ RESOLVED (lazy proxy init)
 
 Contradicts `config.js`, which only warns in development. A developer without Plaid keys cannot start the backend at all, even for Sheets-only work.
 
 - **Recommendation:** lazy-init the Plaid client; return 503 from Plaid routes when unconfigured. **Effort:** ~2 hours.
 
-### FRAGILE-6: `supabaseAdmin` null-guard inconsistency — Medium
+### FRAGILE-6: `supabaseAdmin` null-guard inconsistency — Medium ✅ RESOLVED (prod boot guard in `config.js` + route 503s)
 
 Some routes check for a missing service-role client (Stripe, privacy, MFA); most Plaid/history routes don't and will throw a raw 500 on the first DB call if `SUPABASE_SECRET_KEY` is absent.
 
@@ -115,8 +117,8 @@ By design, P50 with probabilistic augments is a median over scenario draws, not 
 
 ## Edge cases with no current guard
 
-- **localStorage quota exceeded** during plan save → `console.warn` only (`planPersistence.ts` line ~51); user believes data is saved. Needs a visible failure state.
-- **Corrupt plan JSON** → falls back to `DEFAULT_PLAN_STATE` silently — the user's plan "disappears" with no explanation or recovery offer.
-- **Worker unavailable** (old browsers/some embedded contexts) → falls back to main thread; 80 Monte Carlo runs × 30-year daily loops on the main thread will freeze the UI. Cap runs in fallback mode.
+- ~~**localStorage quota exceeded** during plan save~~ ✅ save failure now returns `false` and surfaces a banner (`PlanProvider`), tested in `tests/unit/plan-persistence.test.ts`.
+- ~~**Corrupt plan JSON** falls back silently~~ ✅ corrupt snapshots are backed up before fallback, with a recovery/download/discard banner; tested.
+- ~~**Worker unavailable** main-thread freeze~~ ✅ fallback run count is capped on the browser main thread (`simulationWorkerHost`), tested in `worker-host.test.ts`.
 - **Negative cash / overdraft** behavior in the ledger is untested.
-- **`recurring` / `conditional` augment activation types** exist in types but always evaluate inactive (`augments.ts` lines 55–58) — hide them in the UI or implement them.
+- **`recurring` / `conditional` augment activation types** exist in types but always evaluate inactive (`augments.ts`) — hide them in the UI or implement them.

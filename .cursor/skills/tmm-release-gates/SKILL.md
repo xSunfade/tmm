@@ -52,4 +52,4 @@ Shipping is a controlled act. This skill operationalizes `project-roadmap/10-lau
 - Webhook URLs + OAuth redirects hang off `api.tmm.finance` (D19); Plaid items need `item/webhook/update` backfill if the URL changed (WH-P2).
 - CORS matrix per environment (`07-environments-and-hosting.md`); staging and prod secrets never overlap.
 - Stripe live-mode configuration is founder-in-dashboard; verify the live webhook signing secret matches the prod env var.
-- Supabase prod = Pro + PITR; confirm before any release that touches data shape.
+- Supabase prod = Pro (base) at launch; **PITR deferred to the first real Plaid invoice** (DATA-8, graduated for cost). Confirm the tier before any release that touches data shape, and confirm PITR is on once the Plaid-invoice trigger has fired.

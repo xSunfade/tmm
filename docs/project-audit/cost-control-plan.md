@@ -8,13 +8,14 @@ TMM's architecture is already cost-friendly: simulation runs in the user's brows
 |---|---|---|
 | Frontend hosting (Vercel/Netlify/CF Pages free–pro) | $0–20 | Static build; bandwidth is the only variable |
 | Backend (1 small always-on instance, Render/Railway/Fly) | $7–25 | In-process worker requires always-on |
-| Supabase Pro | $25 | **Recommended non-negotiable** for PITR backups (DATA-8) |
+| Supabase Pro (base) | $25 | Non-negotiable at launch: daily backups (7-day retention), no project pausing. Micro compute covered by the $10 credit. |
+| Supabase PITR add-on (deferred) | +~$105 | 7-day PITR is **$100/mo** and requires a Small compute add-on (~$15, ~$5 net after credit). **Not covered by the spend cap.** Graduated trigger: enable at the **first real Plaid invoice** (DATA-8). |
 | Stripe | % of revenue only | No fixed cost |
 | Google Sheets API | $0 | Free; quota-limited (retry work handles it) |
 | Plaid | **$0 until users connect; then per-item/month** | THE cost to control — see below |
 | Domain/email/monitoring | $5–20 | UptimeRobot/healthchecks free tiers exist |
 
-Total fixed floor: **roughly $40–90/month** before Plaid.
+Total fixed floor at launch: **roughly $40–90/month** before Plaid (Supabase at the $25 Pro base). Enabling PITR later adds **~$105/month** (see below), pushing the floor to ~$145–195 — deferred to the first real Plaid invoice.
 
 ## Plaid — the one cost that scales badly
 
@@ -29,6 +30,7 @@ Actions:
 
 ## Supabase
 
+- **Tier posture (DATA-8, graduated).** Launch on **Pro base (~$25/mo)**: daily backups with 7-day retention, no project pausing, Micro compute covered by the $10 credit. This is the launch floor — free tier is disqualified (projects pause after 1 week; no managed recovery). **PITR is deferred**, not skipped: the $100/mo add-on (7-day retention) plus its required Small compute add-on (~$15, ~$5 net) is **excluded from the spend cap** and roughly 5× the base, so it is not justified at single/double-digit user counts. Interim recovery rests on the application-level layer already shipped in Phase 2 (20 server-side plan revisions/user, pre-import snapshots, XLSX export, Sheets backup) on top of Pro's daily backups (<24h worst-case DB exposure). **Trigger to enable PITR: the first real Plaid invoice** — that event proves paying users with connected financial data exist, at which point seconds-granularity recovery becomes worth ~$105/mo. Accepted-with-reason until then.
 - Growth tables: `transactions` (largest), webhook events, sync runs, snapshots. Add retention sweeps (DATA-6): e.g., webhook events 90 days, sync runs 30 days, keep transactions (product data).
 - The worker's 2 s poll ≈ 43 k queries/day — raise to 10–15 s (see performance audit) mostly to keep query metrics clean; Supabase doesn't bill per query, but connection/CPU pressure is real on small tiers.
 - Per-request `auth.getUser` adds Auth API volume — fine now; JWKS verification later removes it entirely.

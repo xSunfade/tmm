@@ -27,7 +27,7 @@ This supersedes the sequencing in `docs/project-audit/release-readiness-checklis
 
 **Environments**
 - [ ] Staging Supabase rebuilt **from migrations alone**; RLS anon-test green on staging (scheduled weekly thereafter)
-- [ ] Prod Supabase created; **Pro + PITR on**; restore rehearsed once into a scratch project (runbook written)
+- [ ] Prod Supabase created on **Pro** (base); daily backups confirmed. **PITR deferred to the first real Plaid invoice** — at that trigger, enable PITR and rehearse a restore once into a scratch project (runbook written). Restore runbook drafted now regardless.
 - [ ] Backend on always-on host (staging + prod); **worker + scheduler liveness verified** (a queued job processes; a scheduled sync fires)
 - [ ] `api.tmm.finance` live with TLS + HSTS; CORS matrix correct per environment
 - [ ] Deploy pipeline: push → CI → staging → promote; **rollback rehearsed** on both tiers

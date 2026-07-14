@@ -98,7 +98,7 @@ Eight load-bearing decisions, ADR-style. Each cites its D-numbers from `00-decis
 **Decision.**
 - **dev** = the current project (`mkhmaqksodfwccheflpw`). Free to evolve/reset during re-architecture.
 - **staging** = new project; receives every migration before prod; hosts Stripe test-mode + Plaid sandbox integration testing; RLS anon-tests run against it on a schedule.
-- **prod** = new project; created at Gate B; real users only; Supabase Pro + PITR from day one (DATA-8).
+- **prod** = new project; created at Gate B; real users only; Supabase Pro (base) from day one — daily backups, no pausing. PITR deferred to the first real Plaid invoice (DATA-8; graduated for cost, accepted-with-reason).
 - Migration discipline: Supabase CLI-managed migrations from a **clean baseline** (D16 permits a fresh schema); the same migration set applies to all three; hand-applied SQL is forbidden from now on.
 - Parallel environment axes: Stripe test-mode keys for dev/staging, live keys only in prod; Plaid sandbox for dev/staging, production credentials only in prod backend.
 

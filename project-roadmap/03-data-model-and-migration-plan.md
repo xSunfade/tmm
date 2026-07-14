@@ -89,7 +89,7 @@ staging (new, Phase 5.1 — created mid-Phase 4 when integration tests need it)
   receives the full migration set from zero (proves reproducibility)
   hosts Stripe test-mode + Plaid sandbox integration runs, RLS scheduled tests
 prod (new, Phase 5.2, Gate B)
-  born from the migration set; Supabase Pro + PITR on before any real user
+  born from the migration set; Supabase Pro (base) on before any real user; PITR deferred to the first real Plaid invoice (DATA-8)
   every release: staging soak → prod apply; migrations additive/backward-compatible per release
 ```
 

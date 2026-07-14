@@ -38,7 +38,7 @@ In one sentence each (full details and acceptance criteria in the roadmap):
 5. Consolidate to one simulation engine and settle checkpoint semantics — the chart's number is the product.
 6. Define one reproducible deployment with monitoring and a tested rollback.
 7. Run the tests that already exist in CI; do one secret-scan and rotation pass.
-8. Publish a real privacy policy and terms (the templates are ready to fill), and confirm database backups (PITR) are on.
+8. Publish a real privacy policy and terms (the templates are ready to fill), and confirm database backups are on (Pro daily backups at launch; PITR added at the first real Plaid invoice).
 9. If charging at launch: handle failed-payment states and verify the subscribed price in the Stripe webhook first.
 
 ## The recommended MVP path
@@ -52,5 +52,5 @@ Estimated effort to public MVP: **6–8 focused weeks**, phased as: repo hygiene
 1. **Commit the in-progress work** (Google Sheets retry + the new unit test are sitting uncommitted) and start using branches/PRs — the single-commit history means there's currently nothing to roll back to.
 2. **Fix the two one-hour items:** the crashing `/api/plaid/items` endpoint and removal of the unauthenticated diag endpoints.
 3. **Answer the week-one questions** in `open-questions.md`: hosting choice (#18), domain (#19), TMM+-at-launch (#2), and checkpoint semantics (#3) — several workstreams hang off these four.
-4. **Turn on Supabase Pro/PITR** — the cheapest insurance in this entire audit.
+4. **Turn on Supabase Pro** (base) — the cheapest insurance in this entire audit. Add PITR at the first real Plaid invoice (graduated for cost; DATA-8).
 5. **Read `prioritized-roadmap.md`** and, if it matches your intent, start Phase 0.

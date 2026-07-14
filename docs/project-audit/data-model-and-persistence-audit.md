@@ -54,8 +54,8 @@ Issues:
 
 ## Backup and recovery posture
 
-- **Unknown / needs clarification:** Supabase plan tier and whether PITR (point-in-time recovery) is enabled. Free tier has only limited daily backups; a financial product should have PITR (Pro plan) before public launch.
-- **Recommended (DATA-8, High, ~0):** enable Supabase Pro + PITR; document restore procedure; test one restore into a scratch project before launch. Acceptance: a written, tested restore runbook.
+- **Resolved posture (DATA-8, graduated).** Free tier is disqualified (projects pause after a week; no managed recovery). Prod launches on **Supabase Pro base (~$25/mo)**: daily backups, 7-day retention, no pausing. **PITR is deferred, not skipped:** the 7-day PITR add-on is **$100/mo** plus a required Small compute add-on (~$15) and is **not covered by the spend cap** — ~5× the base, unjustified at launch scale. Interim recovery leans on Pro daily backups plus the app-level layer shipped in Phase 2 (20 revisions/user, pre-import snapshots, XLSX export, Sheets backup).
+- **PITR trigger:** enable seconds-granularity PITR at the **first real Plaid invoice** (proof that paying users with connected financial data exist). Acceptance: a written, tested restore runbook rehearsed once into a scratch project when PITR is turned on. Accepted-with-reason until the trigger fires.
 - Local plan data: after DATA-1, server revisions are the user-facing backup; XLSX export is the user-controlled escape hatch (keep it prominent — it builds trust).
 
 ## Data corruption risks summary

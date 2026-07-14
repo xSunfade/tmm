@@ -3,6 +3,7 @@ import { useAppState } from '../../state/appState';
 import { usePlanStore } from '../../lib/plan/planStore';
 import type { Augment, PlanState } from '../../lib/plan/types';
 import { exportPlanXlsx, importPlanXlsx, downloadTemplateXlsx } from '../../lib/plan/xlsx';
+import { snapshotPlanBeforeReplace } from '../../lib/plan/planSync';
 import { loadLastRun } from '../../lib/simulation/runHistory';
 
 type EffectDraft = {
@@ -344,6 +345,7 @@ export function SimulationScreen() {
               type="button"
               onClick={async () => {
                 if (!importFile) return;
+                await snapshotPlanBeforeReplace(planState);
                 const nextPlan = await importPlanXlsx(importFile);
                 planDispatch({ type: 'hydrate', plan: { ...nextPlan, isSampleData: false } });
                 setImportFile(null);
@@ -377,6 +379,7 @@ export function SimulationScreen() {
                 }
                 try {
                   setSampleStatus('Loading sample data...');
+                  await snapshotPlanBeforeReplace(planState);
                   const response = await fetch('/TMM_Sample_Data.xlsx');
                   if (!response.ok) throw new Error('Legacy sample file not found');
                   const blob = await response.blob();

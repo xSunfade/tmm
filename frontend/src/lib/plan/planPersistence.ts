@@ -4,6 +4,7 @@ import type { PlanState } from './types';
 import {
   getActiveStorageUserId,
   getScopedLocalStorageItem,
+  getScopedStorageKey,
   removeScopedLocalStorageItem,
   setScopedLocalStorageItem
 } from '../storage/userScopedStorage';
@@ -99,6 +100,24 @@ export function savePlanSnapshot(plan: PlanState): boolean {
     console.warn('[plan] Failed to persist plan snapshot', error);
     return false;
   }
+}
+
+/**
+ * Cross-tab storage guard (Phase 2.7): notifies this tab when another tab
+ * saves the plan for the same user. The browser only fires `storage` events
+ * in tabs that did NOT perform the write, so any hit means this tab is stale.
+ * Returns an unsubscribe function.
+ */
+export function subscribeToExternalPlanWrites(onExternalWrite: () => void): () => void {
+  if (typeof window === 'undefined') return () => {};
+  const watchedKey = getScopedStorageKey(PLAN_KEY);
+  const handler = (event: StorageEvent) => {
+    if (event.storageArea !== localStorage) return;
+    if (event.key !== watchedKey) return;
+    onExternalWrite();
+  };
+  window.addEventListener('storage', handler);
+  return () => window.removeEventListener('storage', handler);
 }
 
 export function getRestoreSnapshotId(plan: PlanState): string {

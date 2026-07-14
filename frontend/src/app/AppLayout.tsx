@@ -11,6 +11,7 @@ import { SheetsTokenProvider } from '../lib/sheets/SheetsTokenContext';
 import { setSheetsPrefs } from '../lib/sheets/sheetsPrefs';
 import { persistSheetsOAuthDone } from '../state/localBootstrap';
 import { syncPlanToSheets, loadPlanFromSheets, getSheetsQueueStatus, sanitizeSheetName } from '../lib/sheets/sync';
+import { snapshotPlanBeforeReplace } from '../lib/plan/planSync';
 import { getSheetsSessionToken } from '../lib/sheets/api';
 import { usePlanStore } from '../lib/plan/planStore';
 import { hasMeaningfulData } from '../features/restore/restoreEligibility';
@@ -21,8 +22,62 @@ import { applyTheme, getStoredTheme, setStoredTheme } from '../lib/theme/theme';
 import { clearPlaidStepUpVerification } from '../lib/security/mfa';
 import { authFetch } from '../lib/api/authFetch';
 import { AppSpinner } from '../components/AppSpinner';
+import { usePlanSaveStatus } from './providers/planSaveStatus';
 import type { ThemeId } from '../lib/theme/theme';
 import type { AppRoute } from './routing';
+
+/**
+ * Save/backup truth indicator (Phase 2.3, UX-A): one persistent, honest line
+ * answering "is my plan safe?". Local snapshot state comes first (losing the
+ * device copy means losing edits now); the account backup state qualifies it.
+ */
+function PlanSaveIndicator() {
+  const { local, server, serverSavedAt } = usePlanSaveStatus();
+
+  let dotClass = 'bg-emerald-400';
+  let label = 'Saved · backed up to account';
+  let detail: string | null = serverSavedAt
+    ? `Account copy: ${new Date(serverSavedAt).toLocaleString()}`
+    : null;
+
+  if (local === 'save_failed') {
+    dotClass = 'bg-rose-400';
+    label = 'Not saved — action needed';
+    detail = 'Saving to this device failed. See the banner above.';
+  } else if (server === 'saving') {
+    dotClass = 'bg-cyan-400';
+    label = 'Saved here · backing up…';
+  } else if (server === 'checking') {
+    dotClass = 'bg-slate-400';
+    label = 'Saved here · checking account backup…';
+    detail = null;
+  } else if (server === 'offline') {
+    dotClass = 'bg-amber-400';
+    label = 'Saved on this device only';
+    detail = 'Account backup unreachable — it will catch up when the server is back.';
+  } else if (server === 'conflict') {
+    dotClass = 'bg-amber-400';
+    label = 'Saved here · sync conflict';
+    detail = 'Another device saved a newer version. Choose which to keep in the banner.';
+  } else if (server === 'disabled') {
+    dotClass = 'bg-slate-400';
+    label = 'Saved on this device';
+    detail = null;
+  }
+
+  return (
+    <div
+      className="mt-3 rounded-lg border border-slate-800 bg-slate-900/50 px-3 py-2 text-xs"
+      data-testid="plan-save-indicator"
+    >
+      <div className="flex items-center gap-2">
+        <span className={`h-2 w-2 flex-shrink-0 rounded-full ${dotClass}`} aria-hidden />
+        <span className="min-w-0 font-semibold text-slate-200">{label}</span>
+      </div>
+      {detail ? <div className="mt-1 text-[11px] text-slate-500">{detail}</div> : null}
+    </div>
+  );
+}
 
 type AppLayoutProps = {
   children: React.ReactNode;
@@ -230,6 +285,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       }
 
       setIsSyncing(true);
+      await snapshotPlanBeforeReplace(planState);
       const nextPlan = await loadPlanFromSheets(pickedId, sheetsSessionTokenRef.current ?? undefined);
       planDispatch({ type: 'hydrate', plan: { ...nextPlan, isSampleData: false } });
       setStoredSheetId(pickedId);
@@ -476,16 +532,21 @@ export function AppLayout({ children }: AppLayoutProps) {
               />
             </svg>
             <div className="min-w-0 flex-1">
-              <div
-                className={`font-bold ${
-                  appState.sheets.connected ? 'text-amber-400' : 'text-rose-400'
-                }`}
-              >
-                {appState.sheets.connected ? 'CONNECTED' : 'DISCONNECTED (LOCAL)'}
+              <div className="flex items-center gap-1.5">
+                <span
+                  className={`font-bold ${
+                    appState.sheets.connected ? 'text-amber-400' : 'text-slate-500'
+                  }`}
+                >
+                  {appState.sheets.connected ? 'SHEETS BACKUP' : 'SHEETS BACKUP OFF'}
+                </span>
+                <span className="rounded border border-cyan-500/40 bg-cyan-500/10 px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-cyan-300">
+                  Beta
+                </span>
               </div>
               <div className="text-slate-400">
                 {!appState.sheets.connected
-                  ? 'Connect TMM to Google Sheets first!'
+                  ? 'Optional: export plan backups to Google Sheets'
                   : effectiveSheetId
                     ? (sheetTitle ?? 'Spreadsheet')
                     : 'Select or create a TMM template Google Sheet'}
@@ -502,11 +563,13 @@ export function AppLayout({ children }: AppLayoutProps) {
                 : queueStatus.pending > 0
                   ? `${queueStatus.pending} pending – not yet in sheet`
                   : getLastSyncedAt(effectiveSheetId)
-                    ? `Last synced to sheet: ${formatLastSynced(getLastSyncedAt(effectiveSheetId)!)}`
-                    : 'Never synced'}
+                    ? `Last backup: ${formatLastSynced(getLastSyncedAt(effectiveSheetId)!)}`
+                    : 'No backup exported yet'}
             </div>
           ) : null}
         </div>
+
+        <PlanSaveIndicator />
 
         {/* Sheets action block: directly below status, above nav */}
         {!appState.sheets.connected ? (
@@ -651,12 +714,12 @@ export function AppLayout({ children }: AppLayoutProps) {
                     const result = await syncPlanToSheets(planState, effectiveSheetId, sheetsSessionTokenRef.current ?? undefined);
                     if (result.ok) {
                       setLastSyncedAt(effectiveSheetId, new Date().toISOString());
-                      setSheetsToast({ message: 'Synced to sheet.', type: 'success' });
+                      setSheetsToast({ message: 'Backup exported to sheet.', type: 'success' });
                     } else {
                       const msg =
                         result.errors.length > 0
                           ? result.errors[0]
-                          : `Sync incomplete: ${result.queued} changes queued`;
+                          : `Export incomplete: ${result.queued} changes queued`;
                       setSheetsToast({ message: msg, type: 'error' });
                       if (result.errors.some((e) => isGoogleTokenError(e))) {
                         clearStoredSheetId();
@@ -667,7 +730,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                     }
                   } catch (e) {
                     const msg = e instanceof Error ? e.message : String(e);
-                    setSheetsToast({ message: 'Sync failed', type: 'error' });
+                    setSheetsToast({ message: 'Export failed', type: 'error' });
                     if (isGoogleTokenError(msg)) {
                       clearStoredSheetId();
                       setSheetTitle(null);
@@ -679,7 +742,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                   }
                 }}
               >
-                {isSyncing ? 'Syncing…' : 'Sync Now'}
+                {isSyncing ? 'Exporting…' : 'Export backup'}
               </button>
               <button
                 className="rounded-md border border-slate-700 px-2 py-1 text-[11px] text-slate-200 hover:bg-slate-800 disabled:opacity-60 disabled:cursor-not-allowed"
@@ -690,11 +753,12 @@ export function AppLayout({ children }: AppLayoutProps) {
                   if (!effectiveSheetId) return;
                   setIsSyncing(true);
                   try {
+                    await snapshotPlanBeforeReplace(planState);
                     const nextPlan = await loadPlanFromSheets(effectiveSheetId, sheetsSessionTokenRef.current ?? undefined);
                     planDispatch({ type: 'hydrate', plan: { ...nextPlan, isSampleData: false } });
-                    setSheetsToast({ message: 'Refreshed from sheet', type: 'success' });
+                    setSheetsToast({ message: 'Imported from sheet', type: 'success' });
                   } catch (err) {
-                    const msg = err instanceof Error ? err.message : 'Refresh failed';
+                    const msg = err instanceof Error ? err.message : 'Import failed';
                     setSheetsToast({ message: msg, type: 'error' });
                     if (isGoogleTokenError(msg)) {
                       clearStoredSheetId();
@@ -707,7 +771,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                   }
                 }}
               >
-                Refresh from Sheet
+                Import from sheet
               </button>
               {queueStatus.pending > 0 ? (
                 <span className="rounded-md bg-amber-400 px-2 py-1 text-[10px] font-semibold text-slate-900">
@@ -890,6 +954,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                       setIsSyncing(true);
                       setChooseError(null);
                       try {
+                        await snapshotPlanBeforeReplace(planState);
                         const nextPlan = await loadPlanFromSheets(id, sheetsSessionTokenRef.current ?? undefined);
                         planDispatch({ type: 'hydrate', plan: { ...nextPlan, isSampleData: false } });
                         setStoredSheetId(id);
@@ -1115,7 +1180,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         </div>
 
         <div className="mt-6 text-[11px] text-slate-500">
-          Data syncs to your Google Sheet or stays local. Private and secure.
+          Your plan is saved to your account. Google Sheets is an optional backup you control.
         </div>
       </aside>
 
@@ -1126,7 +1191,7 @@ export function AppLayout({ children }: AppLayoutProps) {
           className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/45 backdrop-blur-sm"
           role="status"
           aria-live="polite"
-          aria-label="Syncing with Google Sheets"
+          aria-label="Working with Google Sheets"
         >
           <div className="flex flex-col items-center gap-3 rounded-xl border border-slate-700/80 bg-slate-900/80 px-6 py-5">
             <AppSpinner />

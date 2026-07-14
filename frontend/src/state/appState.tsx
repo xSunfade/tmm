@@ -29,7 +29,7 @@ export type AppState = {
   sheets: {
     connected: boolean;
     dismissed: boolean;
-    /** True after getGoogleTokenStatus() has completed this session; gates Sync Now / Refresh from Sheet */
+    /** True after getGoogleTokenStatus() has completed this session; gates Export backup / Import from sheet */
     connectionVerified: boolean;
     /** Last spreadsheet id from backend (persisted across devices); UI uses this ?? getStoredSheetId() */
     spreadsheetId?: string | null;

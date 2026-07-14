@@ -16,7 +16,8 @@ Supabase is TMM's authoritative source of truth (ADR-1). Any environment must be
 
 ## Historical context you must know
 
-- The 21 legacy migrations in `backend/supabase/migrations/` were **hand-applied**; live migration tracking is empty and live schema drifted (legacy `users` table absent live; FKs already point at `auth.users`). The clean baseline (Phase 2.1, `project-roadmap/03-data-model-and-migration-plan.md`) replaces them. After the baseline lands, the CLI migration set is the only truth.
+- The 21 legacy migrations in `backend/supabase/migrations/` were **hand-applied** and are history-only. The clean baseline **landed 2026-07-06** (Phase 2.1): `supabase/migrations/` now starts at `20260706185451_baseline.sql` and is the only truth. Dev's `supabase_migrations.schema_migrations` matches the repo — keep it that way (apply via `apply_migration` MCP tool or `supabase db push`, then commit the identical file).
+- The baseline is **idempotent** (create-if-not-exists / drop-then-create) because it had to converge the drifted dev schema without a destructive reset. Follow-up migrations already applied: `drop_legacy_permissive_policies` (removed all 17 `USING (true)` policies), `harden_grants` (anon fully revoked from `public`; trigger/RPC functions not executable), `lock_token_tables` (`plaid_tokens` / `google_sheets_tokens` / `plaid_circuit_breaker` are service-role-only — no authenticated policy or grants), `retention_sweeps` (pg_cron nightly `run_retention_sweeps()` at 03:30 UTC).
 - D16: dev data is founder-only; there is **no backward-compatibility constraint** on the current schema — prefer the clean design.
 
 ## Migration rules
@@ -28,7 +29,8 @@ Supabase is TMM's authoritative source of truth (ADR-1). Any environment must be
 
 ## New-table checklist (all items in the SAME PR)
 
-- [ ] RLS enabled; **strict** user-scoped policy (`auth.uid() = user_id`) + explicit anon-deny — never `USING (true)` (17 such policies exist from the service-role era; don't add more)
+- [ ] RLS enabled; **strict** user-scoped policy (`auth.uid() = user_id`) + explicit anon-deny — never `USING (true)` (the 17 service-role-era permissive policies were dropped 2026-07-06; don't reintroduce any)
+- [ ] Secrets/token tables get NO authenticated policy at all (service-role only, like `plaid_tokens`)
 - [ ] FK to `auth.users(id) ON DELETE CASCADE` (or a deliberate, documented exception)
 - [ ] Added to the deletion-cascade verification test
 - [ ] Row added to the retention table in `project-roadmap/06-security-privacy-and-retention.md` (even if "indefinite")
@@ -43,8 +45,9 @@ Supabase is TMM's authoritative source of truth (ADR-1). Any environment must be
 
 ## Function/security hygiene
 
-- Pin `search_path` on all functions, especially SECURITY DEFINER (6 live functions currently violate this — advisor warning).
-- Don't expose new objects via GraphQL; the baseline locks `graphql_public` down.
+- Pin `search_path` on all functions, especially SECURITY DEFINER (all live functions comply as of the baseline; keep it that way).
+- Revoke `execute` from anon/authenticated/public on trigger and internal functions (they're otherwise callable via `/rest/v1/rpc/...`).
+- Anon has zero table privileges in `public` (revoked wholesale + default privileges); new tables inherit that, but still add the explicit anon-deny policy.
 
 ## Verification before handoff
 

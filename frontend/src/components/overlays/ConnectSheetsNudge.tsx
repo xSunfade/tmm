@@ -9,8 +9,8 @@ type ConnectSheetsNudgeProps = {
 export function ConnectSheetsNudge({ onConnect, onDismiss, onOpenLegacy }: ConnectSheetsNudgeProps) {
   return (
     <OverlayShell
-      title="Connect Google Sheets"
-      subtitle="Connect now or continue in local-first mode."
+      title="Connect Google Sheets (Beta)"
+      subtitle="Optional backup — your plan is already saved to your account."
       actions={
         <>
           <button
@@ -45,7 +45,10 @@ export function ConnectSheetsNudge({ onConnect, onDismiss, onOpenLegacy }: Conne
         </>
       }
     >
-      <div>Your plan can sync to Sheets for backup and collaboration. You can connect anytime.</div>
+      <div>
+        Export a copy of your plan to a Google Sheet you own, or import one back into TMM. This is a
+        separate Google permission covering only Sheets — you can connect or revoke it anytime.
+      </div>
     </OverlayShell>
   );
 }

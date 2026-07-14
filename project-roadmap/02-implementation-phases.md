@@ -6,7 +6,7 @@ Effort assumes one experienced developer working with the AI workforce defined i
 
 **Total: ~10–13 focused weeks to Gate C.**
 
-**Status (2026-07-14):** Phase 0 ✅ · Phase 1 ✅ · Phase 2 items 2.1–2.8 ✅ (server-side persistence live: clean migration baseline on dev, `/api/plan` + revisions, frontend sync with conflict handling, save-truth indicator, Sheets repositioned as beta backup); 2.9 (router split) lands as its own mechanical PR. Items 3.3, 3.4, and 3.5 were completed **early** (PR #31: ledger seeds from latest checkpoint per D3, drift-at-today, legacy engine deleted, goldens on ledger) because they were cheap to do together and Phase 2's revision safety-net does not depend on them; 3.1/3.2 (domain model v3, positions) remain Phase 3 work.
+**Status (2026-07-14):** Phase 0 ✅ · Phase 1 ✅ · Phase 2 ✅ COMPLETE (server-side persistence live: clean migration baseline on dev, `/api/plan` + revisions, frontend sync with conflict handling, save-truth indicator, Sheets repositioned as beta backup, `server.js` split into routers). Remaining founder ops task: Supabase Pro + PITR + restore rehearsal (DATA-8). Items 3.3, 3.4, and 3.5 were completed **early** (PR #31: ledger seeds from latest checkpoint per D3, drift-at-today, legacy engine deleted, goldens on ledger) because they were cheap to do together and Phase 2's revision safety-net does not depend on them; 3.1/3.2 (domain model v3, positions) remain Phase 3 work.
 
 ## Sequencing rationale (why this order)
 
@@ -64,7 +64,7 @@ Goal: user data cannot be lost; the server is authoritative (ADR-1).
 | 2.6 | ✅ DONE — Save/backup truth indicator in sidebar (`PlanSaveIndicator`): local save, backing up, backed up, offline, conflict | [H] | UX-A | Reflects all failure modes incl. server-down |
 | 2.7 | ✅ DONE — Sheets repositioning: UI copy → "Export backup / Import from sheet"; sync-as-truth language removed; Sheets OAuth already a separate consent flow (Sheets/Drive scopes only), now beta-labeled | [H] | D5, D21, ADR-8 | Sheets connect is explicit, scoped, labeled |
 | 2.8 | ✅ DONE — Cross-tab storage guard (`subscribeToExternalPlanWrites` + stale-tab banner; saves pause until the user picks a version) | [M] | data audit §corruption 4 | Stale tab warns instead of clobbering |
-| 2.9 | Split `server.js` into routers (mechanical, one PR, zero logic change) | [M] | FRAGILE-7, Phase C | Express route table identical pre/post |
+| 2.9 | ✅ DONE — `server.js` split into `routes/` (stripe, plaid, google, plan, privacy, history) + `lib/` services; verified identical 56-route table pre/post (`backend/scripts/compare-route-tables.mjs`) and clean boot | [M] | FRAGILE-7, Phase C | Express route table identical pre/post |
 
 Dependencies: 2.1 → 2.2 → 2.3/2.4/2.5/2.6. 2.9 anytime after 2.2 (new plan router lands in the split layout).
 

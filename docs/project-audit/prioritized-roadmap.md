@@ -4,7 +4,7 @@ Sequenced phases from today's state to public MVP and beyond. Effort assumes one
 
 Legend: **[C]**ritical / **[H]**igh / **[M]**edium / **[L]**ow.
 
-**Status (2026-07-14):** Phase 0 ✅ complete · Phase 1 ✅ complete (1.5/1.6 landed via PR #31 — single ledger engine, checkpoint seeding per D3, drift-at-today) · Phase 2 code complete: 2.1–2.4, 2.6, 2.7 done + Sheets repositioned as beta backup (impl-phases 2.7); 2.5 (Supabase Pro/PITR) needs founder action; 2.8 (router split) ships as its own mechanical PR.
+**Status (2026-07-14):** Phase 0 ✅ complete · Phase 1 ✅ complete (1.5/1.6 landed via PR #31 — single ledger engine, checkpoint seeding per D3, drift-at-today) · Phase 2 ✅ code complete: 2.1–2.4, 2.6, 2.7, 2.8 done + Sheets repositioned as beta backup (impl-phases 2.7); 2.5 (Supabase Pro/PITR) needs founder action.
 
 ---
 
@@ -43,7 +43,7 @@ All eight items verified done (1.1–1.4, 1.7–1.8 in earlier PRs; 1.5 + 1.6 in
 
 Dependencies: 1.5 before 1.6 (write engine tests once, against the ledger).
 
-## Phase 2 — Data and persistence hardening (1.5–2 weeks) ✅ COMPLETE (code) — 2.5 is a founder ops task; 2.8 ships as its own mechanical PR
+## Phase 2 — Data and persistence hardening (1.5–2 weeks) ✅ COMPLETE (code) — 2.5 (Supabase Pro/PITR) remains a founder ops task
 
 Goal: user data cannot be lost.
 
@@ -56,7 +56,7 @@ Goal: user data cannot be lost.
 | 2.5 | Supabase Pro + PITR + tested restore runbook (DATA-8) ◀ FOUNDER ACTION | [H] | 0.5 d | ops | Restore rehearsed once |
 | 2.6 | Retention sweeps for unbounded tables (DATA-6) ✅ DONE | [M] | 1 d | `run_retention_sweeps()` + pg_cron (daily 03:30 UTC) | Row counts bounded |
 | 2.7 | Cross-tab storage guard ✅ DONE | [M] | 0.5 d | `planPersistence.ts`, `PlanProvider.tsx` | Stale tab warns instead of clobbering |
-| 2.8 | Split `server.js` into routers (Phase C, mechanical) | [M] | 1.5 d | `backend/` | Route table identical pre/post |
+| 2.8 | Split `server.js` into routers (Phase C, mechanical) ✅ DONE | [M] | 1.5 d | `backend/routes/`, `backend/lib/` | Route table identical pre/post (verified: 56 routes) |
 
 Dependencies: 2.1 → 2.2/2.3; 2.4 before any new prod deploy.
 

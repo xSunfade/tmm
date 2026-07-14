@@ -16,6 +16,8 @@
 
 ### DATA-1: Server-side plan persistence — Critical (the most important recommendation in this audit)
 
+✅ **RESOLVED (2026-07-06, Phase 2.1–2.3).** `plans` + `plan_revisions` tables (clean baseline), `GET/PUT /api/plan` + revisions endpoints (`backend/lib/planHandlers.js`, size warn 1 MB / reject 5 MB, optimistic locking on `client_saved_at`), frontend sync gate with newer-of reconcile, debounced push, conflict banner (`planSync.ts`, `PlanProvider.tsx`), revision restore UI in Settings, and a sidebar save/backup truth indicator.
+
 - **Priority:** Critical
 - **Risk reduced:** total loss of user's financial model; cross-device inaccessibility; support burden; trust collapse.
 - **Approach (boring, incremental):** a `plans` table in Supabase — `user_id (PK or unique)`, `plan jsonb`, `schema_version`, `updated_at`, `client_saved_at`. Backend endpoints `GET/PUT /api/plan` (JWT-authed; PUT validates size + `schemaVersion` and is last-writer-wins with the client's `lastSaved` echoed back for conflict detection). Frontend: keep localStorage as the fast local cache and offline layer; debounce-push to the server on change; on load, take the newer of local vs server (prompt only when both changed — reuse the existing restore-overlay pattern). Keep a small history: `plan_revisions` table storing the last N revisions (e.g., 20) for undo/recovery.
@@ -34,7 +36,7 @@
 
 - **XLSX:** `src/lib/plan/xlsx.ts` (~357 lines) + sample workbook in `frontend/public`. Import runs UUID-ensure + migrate.
 - **Google Sheets:** UUID-diff sync per entity tab; fixed tabs rewritten; import parses legacy column layouts; write failures queue in localStorage with online/visibility flush; per-sheet errors abort with `{ ok:false, queued, errors }`.
-- **Gap — Medium (DATA-3):** no dry-run/preview on import; "Refresh from Sheet" replaces the local plan after a single `window.confirm`. With DATA-1 in place, take an automatic server revision snapshot before any import/replace. Acceptance: every destructive import is preceded by an automatic recoverable snapshot.
+- **Gap — Medium (DATA-3):** ✅ **RESOLVED (2026-07-06).** `snapshotPlanBeforeReplace()` posts a `pre_import` revision before every plan-replacing flow (Sheets connect/refresh/choose, XLSX import, sample-data load); restorable from Settings → Plan Backups.
 - **Gap — Low:** `assumptions.finnhubKey` is exported into Sheets/XLSX (secret leakage into shareable files — see API audit).
 
 ## Supabase schema health (from migrations 001–021)
@@ -45,10 +47,10 @@ Issues:
 
 | ID | Issue | Priority |
 |---|---|---|
-| DATA-4 | Migration 001 defines `plaid_tokens.user_id REFERENCES users(id)` (legacy table) while runtime writes Supabase `auth.users` UUIDs. Either the FK was relaxed manually (drift between migrations and live schema) or inserts should be failing. **Unknown / needs verification against the live database.** Re-point or drop the FK in a new migration; never edit old ones. | High (integrity) |
-| DATA-5 | Legacy `users` table + `backend/models/user.js` + `_getOrCreateUser` are dead weight; deletion flow still references them. Deprecate explicitly. | Medium |
-| DATA-6 | Unbounded growth: `plaid_webhook_events`, `plaid_sync_runs`, `plaid_connection_events`, `account_balance_snapshots` (prune function was added in 019 then dropped in 021 — pruning is currently absent). Add simple retention sweeps. | Medium |
-| DATA-7 | Migration hygiene going forward: migrations appear hand-applied (no migration runner in repo, no `supabase/config.toml`). Adopt `supabase db push`/CLI or a checked-in apply script so environments can be rebuilt identically. **Unknown:** how prod schema is currently applied. | High (process) |
+| DATA-4 | ✅ **RESOLVED (2026-07-06).** Verified against live dev: legacy `users` table absent; all FKs point at `auth.users(id) ON DELETE CASCADE`. Codified in the clean baseline (`supabase/migrations/20260706185451_baseline.sql`). | High (integrity) |
+| DATA-5 | ✅ **RESOLVED (2026-07-06).** Legacy `users` table does not exist in the live schema and is excluded from the clean baseline. (`backend/models/user.js` was deleted in Phase 0.3.) | Medium |
+| DATA-6 | ✅ **RESOLVED (2026-07-06).** `run_retention_sweeps()` + pg_cron daily job (03:30 UTC): webhook events 90 d, sync runs/finished jobs 30 d, link intents 90 d, usage counters 30 d, connection events 1 y. `account_balance_snapshots` kept (user financial history per D15). | Medium |
+| DATA-7 | ✅ **RESOLVED (2026-07-06).** Supabase CLI migrations adopted: `supabase/config.toml` + clean baseline; dev `schema_migrations` tracking matches the repo; CI shadow-applies the full set from zero (`.github/workflows/migrations-shadow-apply.yml`). Legacy `backend/supabase/migrations/` kept as history only. Prod project doesn't exist yet — it will be born from these migrations. | High (process) |
 
 ## Backup and recovery posture
 

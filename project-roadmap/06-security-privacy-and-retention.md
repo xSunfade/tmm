@@ -43,10 +43,13 @@ The Supabase security advisors on the dev project reported 70 warnings. These fo
 | Data class | Retention | Mechanism |
 |---|---|---|
 | Financial plans, transactions, imported history, alternatives, pipeline layouts, categories, goals | **Indefinite** — until user deletes it or their account | — |
-| Plan revisions | Newest **20** per user | Prune on insert |
+| Plan revisions | Newest **20** per user | Prune on insert (live, `backend/lib/planHandlers.js`) |
 | Stripe webhook events (`stripe_events`) | **90 days** | Scheduled sweep |
-| Plaid webhook events | **90 days** | Scheduled sweep |
-| Sync execution logs (`plaid_sync_runs` etc.) | **30 days** | Scheduled sweep |
+| Plaid webhook events | **90 days** | ✅ `run_retention_sweeps()` (pg_cron, daily 03:30 UTC) |
+| Sync execution logs (`plaid_sync_runs`, finished `plaid_sync_jobs`) | **30 days** | ✅ `run_retention_sweeps()` |
+| Plaid link intents | **90 days** | ✅ `run_retention_sweeps()` |
+| Rate-limit buckets (`usage_counters`) | **30 days** | ✅ `run_retention_sweeps()` |
+| Connection audit events (`plaid_connection_events`) | **1 year** | ✅ `run_retention_sweeps()` |
 | Audit/security logs (`audit_log`) | **1 year** | Scheduled sweep |
 | User-deleted plans/accounts | **30-day soft delete**, then permanent purge | Soft-delete flag + sweep |
 | Plaid access tokens | **30 days after premium access ends**; immediately on account deletion | Lifecycle sweep (ADR-6) |

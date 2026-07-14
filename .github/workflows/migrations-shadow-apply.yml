@@ -1,0 +1,30 @@
+name: Migrations Shadow Apply
+
+# DATA-7 acceptance: any environment must be rebuildable from
+# supabase/migrations alone. This job applies every migration to a
+# from-zero Postgres (the Supabase CLI shadow database) and fails on
+# any error, so a migration that only works against an already-drifted
+# schema can't merge.
+
+on:
+  pull_request:
+    paths:
+      - "supabase/**"
+      - ".github/workflows/migrations-shadow-apply.yml"
+  workflow_dispatch:
+
+jobs:
+  shadow-apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Start local Supabase (applies all migrations from zero)
+        run: supabase db start
+
+      - name: Lint database functions
+        run: supabase db lint --level error

@@ -10,6 +10,13 @@ import { useSheetsToken } from '../../lib/sheets/SheetsTokenContext';
 import { syncPlanToSheets, loadPlanFromSheets, flushSheetQueue, getSheetsQueueStatus } from '../../lib/sheets/sync';
 import { DEFAULT_PLAN_STATE } from '../../lib/plan/defaults';
 import { loadPlanSnapshot } from '../../lib/plan/planPersistence';
+import { migratePlan } from '../../lib/plan/migrations';
+import {
+  fetchPlanRevision,
+  fetchPlanRevisions,
+  snapshotPlanBeforeReplace,
+  type PlanRevisionSummary
+} from '../../lib/plan/planSync';
 import { createCheckpoint } from '../../lib/simulation/checkpoints';
 import { useAppDispatch } from '../../state/appState';
 import { persistSheetsDismissed, persistSheetsOAuthDone } from '../../state/localBootstrap';
@@ -78,6 +85,9 @@ export function SettingsScreen() {
   const [mfaRemoveError, setMfaRemoveError] = useState<string | null>(null);
   const [mfaVerifyBusy, setMfaVerifyBusy] = useState(false);
   const [mfaStatusFetchFailed, setMfaStatusFetchFailed] = useState(false);
+  const [planRevisions, setPlanRevisions] = useState<PlanRevisionSummary[] | null>(null);
+  const [planRevisionBusyId, setPlanRevisionBusyId] = useState<string | null>(null);
+  const [planRevisionStatus, setPlanRevisionStatus] = useState<string | null>(null);
   const queueStatus = getSheetsQueueStatus();
 
   const sheetsConnected = authState.sheets.connectionVerified ? authState.sheets.connected : false;
@@ -93,6 +103,41 @@ export function SettingsScreen() {
   useEffect(() => {
     setInflationStr(String(planState.assumptions.inflation));
   }, [planState.assumptions.inflation]);
+
+  useEffect(() => {
+    if (!authState.auth.userId) {
+      setPlanRevisions(null);
+      return;
+    }
+    let cancelled = false;
+    fetchPlanRevisions().then((revisions) => {
+      if (!cancelled) setPlanRevisions(revisions);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [authState.auth.userId]);
+
+  const restorePlanRevision = async (revision: PlanRevisionSummary) => {
+    setPlanRevisionBusyId(revision.id);
+    setPlanRevisionStatus(null);
+    try {
+      const full = await fetchPlanRevision(revision.id);
+      if (!full?.plan) {
+        setPlanRevisionStatus('Could not load that backup. Try again in a moment.');
+        return;
+      }
+      const restored = migratePlan(full.plan);
+      // Server pushes exclude the local Finnhub key; keep the current one.
+      restored.assumptions.finnhubKey = planState.assumptions.finnhubKey || '';
+      planDispatch({ type: 'hydrate', plan: { ...restored, isSampleData: false } });
+      setPlanRevisionStatus(
+        `Restored the backup from ${new Date(revision.created_at).toLocaleString()}. It will be saved as your current plan.`
+      );
+    } finally {
+      setPlanRevisionBusyId(null);
+    }
+  };
 
   useEffect(() => {
     if (!sheetsConnected || !authState.sheets.connectionVerified) return;
@@ -410,7 +455,7 @@ export function SettingsScreen() {
               />
             </label>
           </div>
-          <div className="text-xs text-slate-500">Defaults apply where a row doesn&apos;t specify by itself. Changes sync to your plan immediately; use Sync now to push to Google Sheets.</div>
+          <div className="text-xs text-slate-500">Defaults apply where a row doesn&apos;t specify by itself. Changes apply to your plan immediately and are saved to your account.</div>
         </section>
 
         <section className="space-y-4 rounded-lg border border-slate-800 bg-slate-900/60 p-5">
@@ -451,6 +496,62 @@ export function SettingsScreen() {
           >
             Restore Session
           </button>
+        </section>
+
+        <section className="space-y-4 rounded-lg border border-slate-800 bg-slate-900/60 p-5" data-testid="plan-backups-section">
+          <h2 className="text-sm font-semibold text-slate-200">Plan Backups (Account)</h2>
+          <div className="text-xs text-slate-500">
+            Your plan is backed up to your account on every save (last {planRevisions?.length ?? 20} kept).
+            Restoring replaces your current plan; the current plan is kept as the newest backup.
+          </div>
+          {planRevisionStatus ? (
+            <div className="rounded border border-emerald-600/40 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
+              {planRevisionStatus}
+            </div>
+          ) : null}
+          {!authState.auth.userId ? (
+            <div className="text-xs text-slate-500">Sign in to see your account backups.</div>
+          ) : planRevisions === null ? (
+            <div className="text-xs text-slate-500">Loading backups…</div>
+          ) : planRevisions.length === 0 ? (
+            <div className="text-xs text-slate-500">
+              No backups yet. They appear after your first saved change while online.
+            </div>
+          ) : (
+            <ul className="max-h-64 space-y-2 overflow-y-auto">
+              {planRevisions.map((revision) => (
+                <li
+                  key={revision.id}
+                  className="flex items-center justify-between gap-3 rounded-md border border-slate-800 bg-slate-950 px-3 py-2"
+                >
+                  <div>
+                    <div className="text-xs text-slate-200">
+                      {new Date(revision.created_at).toLocaleString()}
+                    </div>
+                    <div className="text-[11px] text-slate-500">
+                      {revision.reason === 'save'
+                        ? 'Auto-save'
+                        : revision.reason === 'pre_import'
+                          ? 'Before import'
+                          : revision.reason === 'pre_migration'
+                            ? 'Before upgrade'
+                            : 'Manual'}
+                      {' · '}
+                      {Math.max(1, Math.round(revision.size_bytes / 1024))} KB
+                    </div>
+                  </div>
+                  <button
+                    className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-200 disabled:opacity-50"
+                    type="button"
+                    disabled={planRevisionBusyId !== null}
+                    onClick={() => void restorePlanRevision(revision)}
+                  >
+                    {planRevisionBusyId === revision.id ? 'Restoring…' : 'Restore'}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
 
         <section className="space-y-3 rounded-lg border border-slate-800 bg-slate-900/60 p-5">
@@ -768,7 +869,16 @@ export function SettingsScreen() {
         </section>
 
         <section className="space-y-4 rounded-lg border border-slate-800 bg-slate-900/60 p-5">
-          <h2 className="text-sm font-semibold text-slate-200">Sync & Backup</h2>
+          <h2 className="flex items-center gap-2 text-sm font-semibold text-slate-200">
+            Google Sheets Backup
+            <span className="rounded border border-cyan-500/40 bg-cyan-500/10 px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide text-cyan-300">
+              Beta
+            </span>
+          </h2>
+          <p className="text-xs text-slate-500">
+            Your plan is saved to your account automatically. Sheets is an optional, user-controlled
+            backup: export a copy to a spreadsheet, or import one back into TMM.
+          </p>
           <div className="text-xs text-slate-400">
             Status:{' '}
             {!authState.sheets.connectionVerified
@@ -825,7 +935,7 @@ export function SettingsScreen() {
                 }
               }}
             >
-              {isSyncing ? 'Syncing…' : 'Sync now'}
+              {isSyncing ? 'Exporting…' : 'Export backup'}
             </button>
             <button
               className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-slate-200 disabled:opacity-50"
@@ -835,6 +945,7 @@ export function SettingsScreen() {
                 if (!authState.sheets.connected || !effectiveSheetId) return;
                 setIsSyncing(true);
                 try {
+                  await snapshotPlanBeforeReplace(planState);
                   const nextPlan = await loadPlanFromSheets(effectiveSheetId, sheetsToken ?? undefined);
                   planDispatch({ type: 'hydrate', plan: { ...nextPlan, isSampleData: false } });
                 } catch (error) {
@@ -850,7 +961,7 @@ export function SettingsScreen() {
                 }
               }}
             >
-              Refresh from sheet
+              Import from sheet
             </button>
             <button
               className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-slate-200 disabled:opacity-50"

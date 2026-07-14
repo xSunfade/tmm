@@ -1,0 +1,9 @@
+# Supabase CLI configuration for TMM.
+# Migrations under supabase/migrations/ are the single source of truth for
+# every environment (dev mkhmaqksodfwccheflpw, staging, prod). See
+# project-roadmap/03-data-model-and-migration-plan.md.
+
+project_id = "tmm"
+
+[db]
+major_version = 17

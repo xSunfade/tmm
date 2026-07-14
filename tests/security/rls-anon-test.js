@@ -26,8 +26,28 @@ async function testAnonKeyRestrictions() {
       operation: 'select'
     },
     {
-      name: 'Anon key cannot read users',
-      table: 'users',
+      name: 'Anon key cannot read profiles',
+      table: 'profiles',
+      operation: 'select'
+    },
+    {
+      name: 'Anon key cannot read user_onboarding',
+      table: 'user_onboarding',
+      operation: 'select'
+    },
+    {
+      name: 'Anon key cannot read google_sheets_tokens',
+      table: 'google_sheets_tokens',
+      operation: 'select'
+    },
+    {
+      name: 'Anon key cannot read plans',
+      table: 'plans',
+      operation: 'select'
+    },
+    {
+      name: 'Anon key cannot read plan_revisions',
+      table: 'plan_revisions',
       operation: 'select'
     },
     {

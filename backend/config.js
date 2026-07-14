@@ -66,6 +66,9 @@ export const config = {
   allowDevUnlistedCors: isDevelopment && process.env.ALLOW_DEV_UNLISTED_CORS === 'true',
   requestTimeoutMs: toPositiveInt(process.env.REQUEST_TIMEOUT_MS, 30000),
   jsonBodyLimit: process.env.JSON_BODY_LIMIT || '256kb',
+  // Route-scoped limit for PUT /api/plan (D14: handler warns at 1 MB, rejects
+  // above 5 MB; parser limit sits slightly above the hard cap).
+  planJsonBodyLimit: process.env.PLAN_JSON_BODY_LIMIT || '6mb',
   enableHsts: isProduction && process.env.ENABLE_HSTS === 'true',
 
   // Plaid

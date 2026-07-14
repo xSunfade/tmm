@@ -105,6 +105,12 @@ import {
   hasGoogleTokens
 } from './storage/googleTokens.js';
 import { createListPlaidItemsHandler, removePlaidItemForUser } from './lib/plaidItemHandlers.js';
+import {
+  createGetPlanHandler,
+  createPutPlanHandler,
+  createListPlanRevisionsHandler,
+  createGetPlanRevisionHandler
+} from './lib/planHandlers.js';
 
 const app = express();
 const PORT = config.port;
@@ -145,6 +151,10 @@ app.use(cors({
 }));
 // Stripe webhook signatures require the raw request body; register before JSON parsing.
 app.use('/api/webhooks/stripe', express.raw({ type: 'application/json' }));
+// Plan documents can legitimately exceed the global body limit (D14: warn at
+// 1 MB, hard-reject above 5 MB in the handler). Route-scoped parser must run
+// before the global one; express.json() no-ops when the body is already parsed.
+app.use('/api/plan', express.json({ limit: config.planJsonBodyLimit, strict: true }));
 app.use(express.json({ limit: config.jsonBodyLimit, strict: true }));
 
 // Request validation middleware
@@ -2200,6 +2210,27 @@ app.get('/api/plaid/item-status', requireAuth, requireTmmPlus, async (req, res, 
     next(err);
   }
 });
+
+// ---------------------------------------------------------------------------
+// Plan persistence (Phase 2.2, ADR-1 / D14): Supabase is the authoritative
+// source of truth for the plan document. Auth-only (all tiers persist plans).
+// Handlers live in lib/planHandlers.js; supabaseAdmin (service role) is used,
+// with strict RLS protecting the anon/browser path.
+// ---------------------------------------------------------------------------
+const planRouteGuard = (req, res, next) => {
+  if (!supabaseAdmin) {
+    return res.status(503).json({
+      error: 'Plan persistence unavailable',
+      message: 'Server is not configured with a Supabase service key.'
+    });
+  }
+  next();
+};
+
+app.get('/api/plan', requireAuth, planRouteGuard, createGetPlanHandler({ supabaseAdmin }));
+app.put('/api/plan', requireAuth, planRouteGuard, createPutPlanHandler({ supabaseAdmin }));
+app.get('/api/plan/revisions', requireAuth, planRouteGuard, createListPlanRevisionsHandler({ supabaseAdmin }));
+app.get('/api/plan/revisions/:revisionId', requireAuth, planRouteGuard, createGetPlanRevisionHandler({ supabaseAdmin }));
 
 app.get('/api/privacy/consent-status', requireAuth, async (req, res, next) => {
   try {

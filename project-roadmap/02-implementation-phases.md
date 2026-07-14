@@ -6,7 +6,7 @@ Effort assumes one experienced developer working with the AI workforce defined i
 
 **Total: ~10–13 focused weeks to Gate C.**
 
-**Status (2026-07-06):** Phase 0 ✅ · Phase 1 ✅ · Phase 2 in progress. Items 3.3, 3.4, and 3.5 were completed **early** (PR #31: ledger seeds from latest checkpoint per D3, drift-at-today, legacy engine deleted, goldens on ledger) because they were cheap to do together and Phase 2's revision safety-net does not depend on them; 3.1/3.2 (domain model v3, positions) remain Phase 3 work.
+**Status (2026-07-14):** Phase 0 ✅ · Phase 1 ✅ · Phase 2 items 2.1–2.8 ✅ (server-side persistence live: clean migration baseline on dev, `/api/plan` + revisions, frontend sync with conflict handling, save-truth indicator, Sheets repositioned as beta backup); 2.9 (router split) lands as its own mechanical PR. Items 3.3, 3.4, and 3.5 were completed **early** (PR #31: ledger seeds from latest checkpoint per D3, drift-at-today, legacy engine deleted, goldens on ledger) because they were cheap to do together and Phase 2's revision safety-net does not depend on them; 3.1/3.2 (domain model v3, positions) remain Phase 3 work.
 
 ## Sequencing rationale (why this order)
 
@@ -56,17 +56,19 @@ Goal: user data cannot be lost; the server is authoritative (ADR-1).
 
 | # | Item | Pri | Refs | Acceptance |
 |---|---|---|---|---|
-| 2.1 | `plans` + `plan_revisions` tables (clean-baseline migration set begins here — see `03-data-model-and-migration-plan.md`); RLS user-scoped | [C] | DATA-1, D5, D16 | Fresh DB rebuilds from CLI migrations |
-| 2.2 | `GET/PUT /api/plan`: JWT auth, 1 MB warn / 5 MB reject, schema-version check, `client_saved_at` conflict echo | [C] | D14 | Integration tests: round-trip, oversize reject, conflict prompt |
-| 2.3 | Frontend: localStorage → cache layer; debounced server push; newer-of on load; conflict prompt | [C] | DATA-1 | Second-device restore; offline editing still works |
-| 2.4 | Revision history: revision-per-save, prune to 20, restore UI in Settings | [H] | D14 | Restore from any of last 20 revisions |
-| 2.5 | Pre-import snapshot before Sheets refresh / XLSX import | [H] | DATA-3 | Every replace preceded by recoverable revision |
-| 2.6 | Save/backup truth indicator (*Saved locally · Backed up · Not saved*) | [H] | UX-A | Reflects all failure modes incl. server-down |
-| 2.7 | Sheets repositioning: UI copy → "Export backup / Import"; remove sync-as-truth language; split Sheets OAuth into separate consent flow, beta-labeled | [H] | D5, D21, ADR-8 | Sheets connect is explicit, scoped, labeled |
-| 2.8 | Cross-tab storage guard | [M] | data audit §corruption 4 | Stale tab warns instead of clobbering |
+| 2.1 | ✅ DONE — `plans` + `plan_revisions` tables (clean-baseline migration set begins here — see `03-data-model-and-migration-plan.md`); RLS user-scoped. Baseline `20260706185451` + hardening migrations applied to dev; CI shadow-applies from zero | [C] | DATA-1, D5, D16 | Fresh DB rebuilds from CLI migrations |
+| 2.2 | ✅ DONE — `GET/PUT /api/plan`: JWT auth, 1 MB warn / 5 MB reject, schema-version check, `client_saved_at` conflict echo (`backend/lib/planHandlers.js` + unit tests) | [C] | D14 | Integration tests: round-trip, oversize reject, conflict prompt |
+| 2.3 | ✅ DONE — Frontend: localStorage → cache layer; debounced server push; newer-of on load; conflict prompt (`planSync.ts`, `PlanServerSyncGate` in `PlanProvider.tsx`) | [C] | DATA-1 | Second-device restore; offline editing still works |
+| 2.4 | ✅ DONE — Revision history: revision-per-save, prune to 20, restore UI in Settings → Plan Backups (Account) | [H] | D14 | Restore from any of last 20 revisions |
+| 2.5 | ✅ DONE — Pre-import snapshot (`snapshotPlanBeforeReplace`) before Sheets import, XLSX import, sample-data load | [H] | DATA-3 | Every replace preceded by recoverable revision |
+| 2.6 | ✅ DONE — Save/backup truth indicator in sidebar (`PlanSaveIndicator`): local save, backing up, backed up, offline, conflict | [H] | UX-A | Reflects all failure modes incl. server-down |
+| 2.7 | ✅ DONE — Sheets repositioning: UI copy → "Export backup / Import from sheet"; sync-as-truth language removed; Sheets OAuth already a separate consent flow (Sheets/Drive scopes only), now beta-labeled | [H] | D5, D21, ADR-8 | Sheets connect is explicit, scoped, labeled |
+| 2.8 | ✅ DONE — Cross-tab storage guard (`subscribeToExternalPlanWrites` + stale-tab banner; saves pause until the user picks a version) | [M] | data audit §corruption 4 | Stale tab warns instead of clobbering |
 | 2.9 | Split `server.js` into routers (mechanical, one PR, zero logic change) | [M] | FRAGILE-7, Phase C | Express route table identical pre/post |
 
 Dependencies: 2.1 → 2.2 → 2.3/2.4/2.5/2.6. 2.9 anytime after 2.2 (new plan router lands in the split layout).
+
+Also landed with Phase 2 (from the audit roadmap): retention sweeps (DATA-6, `run_retention_sweeps()` + pg_cron daily 03:30 UTC) and grant hardening (anon fully revoked; token tables service-role-only). Outstanding founder action: Supabase Pro + PITR + restore rehearsal (DATA-8).
 
 ## Phase 3 — Domain Model Foundation and simulation truth (~2.5–3 weeks)
 

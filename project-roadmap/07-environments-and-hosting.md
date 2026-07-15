@@ -18,7 +18,7 @@ Implements ADR-4 (topology) and ADR-5 (environment separation). Decisions: D17 (
                                     │
                                     ▼
                      ┌──────────────────────────────┐
-                     │ Supabase (auth + Postgres)   │   RLS, PITR (prod)
+                     │ Supabase (auth + Postgres)   │   RLS, Pro daily backups (prod; PITR at first Plaid invoice)
                      └──────────────────────────────┘
 ```
 
@@ -32,7 +32,7 @@ The stable `api.tmm.finance` domain is the contract with third parties (webhook 
 |---|---|---|---|
 | Frontend | Vercel previews / localhost Vite | Vercel preview or a staging alias | Vercel prod → **tmm.finance** |
 | Backend | localhost / existing Vercel project (`tmm-backend`) | Render staging service (small instance) | Render prod service → **api.tmm.finance** |
-| Supabase | `mkhmaqksodfwccheflpw` ("The Money Machine", existing) | new project (Phase 5.1) | new project (Phase 5.2), **Pro + PITR** |
+| Supabase | `mkhmaqksodfwccheflpw` ("The Money Machine", existing) | new project (Phase 5.1) | new project (Phase 5.2), **Pro** (base at launch; PITR deferred to first Plaid invoice) |
 | Stripe | test mode | test mode (own webhook endpoint) | **live mode** |
 | Plaid | sandbox | sandbox | **production** (approved, D20) |
 | Google OAuth | dev consent config | same client, staging redirect URIs | verified app for Sheets scopes (post-launch OK, D21) |

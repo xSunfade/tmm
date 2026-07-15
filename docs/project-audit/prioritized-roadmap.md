@@ -4,7 +4,7 @@ Sequenced phases from today's state to public MVP and beyond. Effort assumes one
 
 Legend: **[C]**ritical / **[H]**igh / **[M]**edium / **[L]**ow.
 
-**Status (2026-07-14):** Phase 0 ✅ complete · Phase 1 ✅ complete (1.5/1.6 landed via PR #31 — single ledger engine, checkpoint seeding per D3, drift-at-today) · Phase 2 ✅ code complete: 2.1–2.4, 2.6, 2.7, 2.8 done + Sheets repositioned as beta backup (impl-phases 2.7); 2.5 (Supabase Pro/PITR) needs founder action.
+**Status (2026-07-14):** Phase 0 ✅ complete · Phase 1 ✅ complete (1.5/1.6 landed via PR #31 — single ledger engine, checkpoint seeding per D3, drift-at-today) · Phase 2 ✅ code complete: 2.1–2.4, 2.6, 2.7, 2.8 done + Sheets repositioned as beta backup (impl-phases 2.7); 2.5 (Supabase Pro at launch; PITR deferred to first real Plaid invoice) needs founder action.
 
 ---
 
@@ -43,7 +43,7 @@ All eight items verified done (1.1–1.4, 1.7–1.8 in earlier PRs; 1.5 + 1.6 in
 
 Dependencies: 1.5 before 1.6 (write engine tests once, against the ledger).
 
-## Phase 2 — Data and persistence hardening (1.5–2 weeks) ✅ COMPLETE (code) — 2.5 (Supabase Pro/PITR) remains a founder ops task
+## Phase 2 — Data and persistence hardening (1.5–2 weeks) ✅ COMPLETE (code) — 2.5 (Supabase Pro at launch; PITR deferred to first Plaid invoice) remains a founder ops task
 
 Goal: user data cannot be lost.
 
@@ -53,7 +53,7 @@ Goal: user data cannot be lost.
 | 2.2 | Pre-import snapshot on Sheets refresh / XLSX import (DATA-3) ✅ DONE | [H] | 0.5 d | import flows | Every replace preceded by a `pre_import` revision |
 | 2.3 | Save/backup truth indicator (UX-A) ✅ DONE | [H] | 1.5 d | `AppLayout.tsx`, `planSaveStatus.ts` | Sidebar indicator: local save, server sync, offline, conflict states |
 | 2.4 | Resolve FK drift (DATA-4); deprecate legacy `users` (DATA-5); adopt migration tooling (DATA-7) ✅ DONE | [H] | 1–2 d | `supabase/migrations/` (clean baseline 2026-07-06), CI shadow-apply | Fresh DB rebuilds from migrations; dev tracking matches repo |
-| 2.5 | Supabase Pro + PITR + tested restore runbook (DATA-8) ◀ FOUNDER ACTION | [H] | 0.5 d | ops | Restore rehearsed once |
+| 2.5 | Supabase Pro base at launch; **PITR deferred to the first real Plaid invoice** + tested restore runbook (DATA-8) ◀ FOUNDER ACTION | [H] | 0.5 d | ops | Pro on before launch; PITR enabled + restore rehearsed once when trigger fires |
 | 2.6 | Retention sweeps for unbounded tables (DATA-6) ✅ DONE | [M] | 1 d | `run_retention_sweeps()` + pg_cron (daily 03:30 UTC) | Row counts bounded |
 | 2.7 | Cross-tab storage guard ✅ DONE | [M] | 0.5 d | `planPersistence.ts`, `PlanProvider.tsx` | Stale tab warns instead of clobbering |
 | 2.8 | Split `server.js` into routers (Phase C, mechanical) ✅ DONE | [M] | 1.5 d | `backend/routes/`, `backend/lib/` | Route table identical pre/post (verified: 56 routes) |

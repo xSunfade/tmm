@@ -6,7 +6,7 @@ Effort assumes one experienced developer working with the AI workforce defined i
 
 **Total: ~10–13 focused weeks to Gate C.**
 
-**Status (2026-07-14):** Phase 0 ✅ · Phase 1 ✅ · Phase 2 ✅ COMPLETE (server-side persistence live: clean migration baseline on dev, `/api/plan` + revisions, frontend sync with conflict handling, save-truth indicator, Sheets repositioned as beta backup, `server.js` split into routers). Remaining founder ops task: Supabase Pro + PITR + restore rehearsal (DATA-8). Items 3.3, 3.4, and 3.5 were completed **early** (PR #31: ledger seeds from latest checkpoint per D3, drift-at-today, legacy engine deleted, goldens on ledger) because they were cheap to do together and Phase 2's revision safety-net does not depend on them; 3.1/3.2 (domain model v3, positions) remain Phase 3 work.
+**Status (2026-07-14):** Phase 0 ✅ · Phase 1 ✅ · Phase 2 ✅ COMPLETE (server-side persistence live: clean migration baseline on dev, `/api/plan` + revisions, frontend sync with conflict handling, save-truth indicator, Sheets repositioned as beta backup, `server.js` split into routers). Remaining founder ops task: Supabase Pro at launch; PITR + restore rehearsal deferred to the first real Plaid invoice (DATA-8). Items 3.3, 3.4, and 3.5 were completed **early** (PR #31: ledger seeds from latest checkpoint per D3, drift-at-today, legacy engine deleted, goldens on ledger) because they were cheap to do together and Phase 2's revision safety-net does not depend on them; 3.1/3.2 (domain model v3, positions) remain Phase 3 work.
 
 ## Sequencing rationale (why this order)
 
@@ -68,7 +68,7 @@ Goal: user data cannot be lost; the server is authoritative (ADR-1).
 
 Dependencies: 2.1 → 2.2 → 2.3/2.4/2.5/2.6. 2.9 anytime after 2.2 (new plan router lands in the split layout).
 
-Also landed with Phase 2 (from the audit roadmap): retention sweeps (DATA-6, `run_retention_sweeps()` + pg_cron daily 03:30 UTC) and grant hardening (anon fully revoked; token tables service-role-only). Outstanding founder action: Supabase Pro + PITR + restore rehearsal (DATA-8).
+Also landed with Phase 2 (from the audit roadmap): retention sweeps (DATA-6, `run_retention_sweeps()` + pg_cron daily 03:30 UTC) and grant hardening (anon fully revoked; token tables service-role-only). Outstanding founder action: Supabase Pro at launch; PITR + restore rehearsal deferred to the first real Plaid invoice (DATA-8).
 
 ## Phase 3 — Domain Model Foundation and simulation truth (~2.5–3 weeks)
 
@@ -117,7 +117,7 @@ Goal: three clean environments; one reproducible deployment; observable and supp
 | # | Item | Pri | Refs | Acceptance |
 |---|---|---|---|---|
 | 5.1 | Create **staging** Supabase project; apply CLI migrations from zero; seed test users; run RLS tests | [C] | D17 | Staging rebuilt from migrations alone |
-| 5.2 | Create **prod** Supabase project; Supabase Pro + PITR; tested restore runbook | [C] | D17, DATA-8 | Restore rehearsed once into scratch project |
+| 5.2 | Create **prod** Supabase project on **Supabase Pro** (base); **PITR deferred to the first real Plaid invoice** (then rehearse restore + write runbook) | [C] | D17, DATA-8 | Pro on before launch; PITR add-on + restore rehearsed once into scratch project when trigger fires |
 | 5.3 | Provision always-on backend (Render default) for staging + prod; migrate off Vercel serverless backend | [C] | D18, ADR-4 | Worker + schedulers verified running; Vercel backend demoted to dev |
 | 5.4 | DNS/TLS: `api.tmm.finance`; re-register Stripe + Plaid webhooks and OAuth redirects to stable domains; HSTS on | [C] | D19, WH-P2 | Webhook test events received on prod URL |
 | 5.5 | Deploy pipeline: push → CI green → deploy; documented + tested rollback for both tiers | [C] | audit 4.1 | Rollback rehearsed |

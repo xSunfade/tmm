@@ -44,7 +44,7 @@ Practical go/no-go list for the first public release. Items marked **[BLOCKER]**
 
 ## Data
 
-- [ ] **[BLOCKER]** Supabase Pro + PITR enabled; restore runbook written and tested once (DATA-8)
+- [ ] **[BLOCKER]** Supabase **Pro** (base) enabled before launch; daily backups confirmed; restore runbook written. **PITR deferred to the first real Plaid invoice** — enable + test a restore once at that trigger (DATA-8)
 - [ ] **[BLOCKER]** Corrupt-plan recovery path (DATA-2) + pre-import snapshot (DATA-3)
 - [ ] Migration process defined (DATA-7); FK drift resolved (DATA-4)
 - [ ] Retention sweeps scheduled (DATA-6)

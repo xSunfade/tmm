@@ -29,7 +29,7 @@ Read-only inspection of the Supabase, Vercel, and Stripe environments connected 
    - 6 × mutable `search_path` functions (incl. `plaid_apply_transactions_sync`, `increment_usage_counter` — 3 are SECURITY DEFINER, executable by public/signed-in)
    - 1 × leaked-password protection disabled
    These are folded into Phase 2.1 (baseline policies) and Phase 5.9 (project config).
-5. **Plan tier / backups:** the project is on the free tier posture assumed by the audit (Pro + PITR is a Gate B requirement for the *prod* project; the dev project can stay free).
+5. **Plan tier / backups:** the project is on the free tier posture assumed by the audit (Pro base is a Gate B requirement for the *prod* project; PITR is deferred to the first real Plaid invoice per DATA-8; the dev project can stay free).
 
 **Gap to target:** staging and prod projects do not exist; no CLI migration management; advisor cleanup pending. All planned (Phases 2, 5).
 
@@ -86,7 +86,7 @@ Read-only inspection of the Supabase, Vercel, and Stripe environments connected 
 
 | Prepared | Missing |
 |---|---|
-| Supabase dev project healthy, RLS on, FKs correct live | Staging + prod projects; CLI migrations; advisor cleanup; Pro+PITR (prod) |
+| Supabase dev project healthy, RLS on, FKs correct live | Staging + prod projects; CLI migrations; advisor cleanup; Pro base (prod; PITR deferred to first Plaid invoice) |
 | `tmm.finance` owned and attached | `api.tmm.finance`; always-on backend hosts; deploy pipeline |
 | Stripe test mode wired to code patterns (customer metadata linking); pricing floor computed with real Plaid rates | Full catalog (2 products × 2 intervals); founder-confirmed final prices; live-mode setup; webhook re-registration |
 | Plaid production approved (D20); real contract rates known | Webhook URL registration to stable domain; SEC-1 verification before prod traffic; account-cap / item-cap decision |

@@ -22,7 +22,7 @@ A free product where users model their finances and simulate outcomes, with acco
 | Complete `.env.example`s + startup config validation (ENV-1) | Deployability and operator safety | API audit |
 | CI runs unit tests + RLS test; secret scan pass (SEC-5) | Minimum verification before each release | testing strategy |
 | Real privacy policy + ToS; deletion-cascade test | Legal/trust floor for financial data | security audit |
-| Supabase backups/PITR confirmed (DATA-8) | Recoverability | data audit |
+| Supabase Pro daily backups confirmed at launch; PITR deferred to first Plaid invoice (DATA-8) | Recoverability | data audit |
 | Browser tab title + basic first-run polish | Visible-in-two-seconds credibility | UX audit |
 
 ## Should-have soon after (fast follow, weeks 1–6 post-launch)

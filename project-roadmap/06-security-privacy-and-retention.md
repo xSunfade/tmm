@@ -53,7 +53,7 @@ The Supabase security advisors on the dev project reported 70 warnings. These fo
 | Audit/security logs (`audit_log`) | **1 year** | Scheduled sweep |
 | User-deleted plans/accounts | **30-day soft delete**, then permanent purge | Soft-delete flag + sweep |
 | Plaid access tokens | **30 days after premium access ends**; immediately on account deletion | Lifecycle sweep (ADR-6) |
-| Encrypted infrastructure backups (Supabase PITR) | Provider's normal window; never used for account restoration | Supabase-managed |
+| Encrypted infrastructure backups (Supabase Pro daily backups; PITR once enabled at first Plaid invoice) | Provider's normal window; never used for account restoration | Supabase-managed |
 
 This table feeds the privacy policy verbatim and replaces the template's placeholders in `docs/security/DATA_RETENTION_AND_DELETION_POLICY.md`.
 

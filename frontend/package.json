@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "test:simulation": "tsx ../tests/simulation/simulation-validation.test.ts && tsx ../tests/simulation/checkpoint-drift.test.ts && tsx ../tests/simulation/worker-host.test.ts && tsx ../tests/unit/plan-persistence.test.ts"
+    "test:simulation": "tsx ../tests/simulation/simulation-validation.test.ts && tsx ../tests/simulation/checkpoint-drift.test.ts && tsx ../tests/simulation/position-semantics.test.ts && tsx ../tests/simulation/engine-edge-cases.test.ts && tsx ../tests/simulation/worker-host.test.ts && tsx ../tests/unit/plan-persistence.test.ts && tsx ../tests/unit/plan-migrations.test.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.91.1",

@@ -47,7 +47,9 @@ export function exportPlanXlsx(plan: PlanState) {
     'Alternatives'
   );
 
-  const settingsRows = [{ Inflation: plan.assumptions.inflation, Start: plan.assumptions.start, FinnhubKey: plan.assumptions.finnhubKey || '' }];
+  // SEC-10: the Finnhub key is a device-local secret and never leaves the device —
+  // it is deliberately absent from exports (schema v3).
+  const settingsRows = [{ Inflation: plan.assumptions.inflation, Start: plan.assumptions.start }];
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(settingsRows), 'Settings');
 
   const augmentsRows = (plan.augments || []).map((a) => ({
@@ -151,7 +153,10 @@ export function exportPlanXlsx(plan: PlanState) {
       ManualValue: a.manualValue ?? '',
       OverrideActive: a.overrideActive ? 'TRUE' : 'FALSE',
       LastSyncedAt: a.lastSyncedAt || '',
-      LastOverriddenAt: a.lastOverriddenAt || ''
+      LastOverriddenAt: a.lastOverriddenAt || '',
+      // Schema v3 (D4): position acquisition history + review flag.
+      AcquisitionsJSON: JSON.stringify(a.acquisitions || []),
+      PositionNeedsReview: a.positionNeedsReview ? 'TRUE' : 'FALSE'
     }));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(assets.length ? assets : [{ UUID: '', Mode: 'Manual', Name: '', Group: '', CurrentValue: 0 }]), 'Assets' + suffix);
 
@@ -200,7 +205,7 @@ export function exportPlanXlsx(plan: PlanState) {
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(flowRows.length ? flowRows : [{ FromKind: '', FromIndex: '', ToKind: '', ToIndex: '', Mode: 'fixed', Amount: 0, Frequency: 'monthly', Note: '' }]), 'PB Flows' + suffix);
   });
 
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([{ export_version: '2.0', exported_at: new Date().toISOString() }]), 'TMM_META');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([{ export_version: '3.0', exported_at: new Date().toISOString() }]), 'TMM_META');
 
   const connectedRaw = getScopedLocalStorageItem('tmm_connected_accounts');
   if (connectedRaw) {
@@ -220,7 +225,7 @@ export function exportPlanXlsx(plan: PlanState) {
 export function downloadTemplateXlsx() {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Alternative', 'EnabledOnChart'], ['Baseline', true]]), 'Alternatives');
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Inflation', 'Start', 'FinnhubKey'], [2.5, new Date().toISOString().slice(0, 10), '']]), 'Settings');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Inflation', 'Start'], [2.5, new Date().toISOString().slice(0, 10)]]), 'Settings');
   XLSX.writeFile(wb, 'money-machine-template.xlsx');
 }
 
@@ -253,6 +258,8 @@ export async function importPlanXlsx(file: File): Promise<PlanState> {
       const row = rows[0];
       plan.assumptions.inflation = Number(row.Inflation) || plan.assumptions.inflation;
       plan.assumptions.start = String(row.Start || plan.assumptions.start);
+      // Legacy (pre-v3) workbooks exported the key; keep reading it so old files
+      // import losslessly. v3 exports no longer contain it (SEC-10).
       plan.assumptions.finnhubKey = String(row.FinnhubKey || '');
     }
   }
@@ -311,26 +318,40 @@ export async function importPlanXlsx(file: File): Promise<PlanState> {
     }
     if (assetsSheet) {
       const rows = safeSheetToJson(assetsSheet);
-      alt.asset = rows.map((r) => ({
-        uuid: String(r.UUID || ''),
-        mode: (r.Mode as any) || 'Manual',
-        name: String(r.Name || ''),
-        group: String(r.Group || ''),
-        ticker: String(r.Ticker || ''),
-        quantity: Number(r.Qty) || 0,
-        liveprice: Number(r.LivePrice) || 0,
-        value: Number(r.CurrentValue) || 0,
-        totalContrib: Number(r.TotalContribution) || 0,
-        recurAmt: Number(r.RecurringContribution) || 0,
-        recurFreq: (r.Frequency as any) || 'monthly',
-        source: String(r.Source || ''),
-        apy: Number(r.APY) || 0,
-        dataSource: (r.DataSource as any) || 'manual',
-        connectedAccountId: String(r.ConnectedAccountId || ''),
-        autoValue: r.AutoValue !== '' ? Number(r.AutoValue) : null,
-        manualValue: r.ManualValue !== '' ? Number(r.ManualValue) : null,
-        overrideActive: r.OverrideActive === 'TRUE'
-      }));
+      alt.asset = rows.map((r) => {
+        // v3 columns; absent in v2 workbooks — migratePlan backfills.
+        let acquisitions: unknown = undefined;
+        if (typeof r.AcquisitionsJSON === 'string' && r.AcquisitionsJSON.trim()) {
+          try {
+            const parsed = JSON.parse(r.AcquisitionsJSON);
+            if (Array.isArray(parsed)) acquisitions = parsed;
+          } catch {
+            // tolerate malformed cells; treated as absent
+          }
+        }
+        return {
+          uuid: String(r.UUID || ''),
+          mode: (r.Mode as any) || 'Manual',
+          name: String(r.Name || ''),
+          group: String(r.Group || ''),
+          ticker: String(r.Ticker || ''),
+          quantity: Number(r.Qty) || 0,
+          liveprice: Number(r.LivePrice) || 0,
+          value: Number(r.CurrentValue) || 0,
+          totalContrib: Number(r.TotalContribution) || 0,
+          recurAmt: Number(r.RecurringContribution) || 0,
+          recurFreq: (r.Frequency as any) || 'monthly',
+          source: String(r.Source || ''),
+          apy: Number(r.APY) || 0,
+          dataSource: (r.DataSource as any) || 'manual',
+          connectedAccountId: String(r.ConnectedAccountId || ''),
+          autoValue: r.AutoValue !== '' ? Number(r.AutoValue) : null,
+          manualValue: r.ManualValue !== '' ? Number(r.ManualValue) : null,
+          overrideActive: r.OverrideActive === 'TRUE',
+          ...(acquisitions !== undefined ? { acquisitions: acquisitions as any } : {}),
+          ...(r.PositionNeedsReview === 'TRUE' ? { positionNeedsReview: true } : {})
+        };
+      });
     }
     if (debtsSheet) {
       const rows = safeSheetToJson(debtsSheet);

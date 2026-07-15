@@ -46,6 +46,11 @@ function createAugment(): Augment {
 }
 
 function getAugmentStatus(augment: Augment) {
+  // recurring/conditional activation is not implemented (Phase 3.6): the engine
+  // treats such augments as inert, so surface that instead of a misleading status.
+  if (augment.activation.type === 'recurring' || augment.activation.type === 'conditional') {
+    return 'unsupported';
+  }
   const now = new Date();
   const start = new Date(augment.activation.startDate);
   let end = augment.activation.endDate ? new Date(augment.activation.endDate) : null;
@@ -260,7 +265,14 @@ export function SimulationScreen() {
               {augments.map((augment) => {
                 const status = getAugmentStatus(augment);
                 const { icon, colorClass } = getCategoryMeta(augment.category);
-                const statusLabel = status === 'scheduled' ? 'Scheduled' : status === 'active' ? 'Active' : 'Expired';
+                const statusLabel =
+                  status === 'unsupported'
+                    ? 'Not supported — has no effect'
+                    : status === 'scheduled'
+                      ? 'Scheduled'
+                      : status === 'active'
+                        ? 'Active'
+                        : 'Expired';
                 return (
                   <div
                     key={augment.id}

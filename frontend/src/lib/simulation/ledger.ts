@@ -1,5 +1,6 @@
 import type { Alternative, Augment, Checkpoint, PipelineState, PlanState } from '../plan/types';
 import { getEffectiveValue } from '../plan/overrideManager';
+import { isPositionRow } from '../domain/fromPlan';
 import { applyFlowsToAlternative } from '../pipeline/engine';
 import { detectDrift, getCheckpoints, getLastCheckpoint } from './checkpoints';
 import { isAugmentActive } from './augments';
@@ -17,6 +18,19 @@ export type LedgerEvent = {
   groupId?: string;
 };
 
+/**
+ * Position state for market-asset accounts (D4, spec: PositionSemantics.md).
+ * Quantity is fixed-point micro-shares (1 share = 1e6); price is fixed-point
+ * micro-cents per share (1 cent = 1e6). The account's balance is the position's
+ * valuation: bankersRound(quantityMicro × priceMicroCents / 1e12) cents.
+ */
+export type LedgerPositionInput = {
+  quantityMicro: bigint;
+  priceMicroCents: bigint;
+  /** Assumed annual return driving the deterministic price path (ppm). */
+  annualReturnPpm: bigint;
+};
+
 export type LedgerAccountInput = {
   id: string;
   kind: 'cash' | 'asset' | 'debt';
@@ -25,6 +39,8 @@ export type LedgerAccountInput = {
   annualRatePpm?: bigint;
   dailyFeeCents?: bigint;
   allowNegative?: boolean;
+  /** Present on position accounts; replaces balance interest with price-path valuation. */
+  position?: LedgerPositionInput;
 };
 
 export type RecurringFlow = {
@@ -74,15 +90,48 @@ export type LedgerScenario = {
   seed?: string;
 };
 
+export type LedgerPositionAcquisition = {
+  dayIndex: number;
+  date: string;
+  quantityMicro: bigint;
+  priceMicroCents: bigint;
+  costCents: bigint;
+};
+
+export type LedgerPositionReport = {
+  accountId: string;
+  quantityMicro: bigint;
+  priceMicroCents: bigint;
+  valueCents: bigint;
+  acquisitions: LedgerPositionAcquisition[];
+};
+
 export type LedgerRunResult = {
   events: LedgerEvent[];
   dailyBalances: Array<Record<string, bigint>>;
   netWorthByDay: Array<{ dayIndex: number; date: string; valueCents: bigint }>;
   monthlyAggregates: Array<{ month: string; netWorthEndCents: bigint; flowNetCents: bigint }>;
   cumulativeRoundingLossCents: bigint;
+  /** Final state + acquisition history for each position account (D4). */
+  positions: LedgerPositionReport[];
 };
 
 const RATE_DENOM = 1_000_000n * 365n;
+/** micro-shares × micro-cents → cents (1e6 × 1e6). */
+const MICRO_SQ = 1_000_000_000_000n;
+
+export function microSharesFromNumber(quantity: number): bigint {
+  return BigInt(Math.round(quantity * 1_000_000));
+}
+
+export function microCentsFromDollars(price: number): bigint {
+  return BigInt(Math.round(price * 100_000_000));
+}
+
+/** Position valuation per PositionSemantics.md: bankersRound(qty × price / 1e12). */
+export function positionValueCents(quantityMicro: bigint, priceMicroCents: bigint): bigint {
+  return bankersRoundRational(quantityMicro * priceMicroCents, MICRO_SQ);
+}
 
 function toDateString(date: Date): string {
   return date.toISOString().slice(0, 10);
@@ -337,10 +386,19 @@ type LedgerRunOptions = {
   captureDailyBalances?: boolean;
 };
 
+type PositionState = {
+  quantityMicro: bigint;
+  priceMicroCents: bigint;
+  priceResidualNumerator: bigint;
+  annualReturnPpm: bigint;
+  acquisitions: LedgerPositionAcquisition[];
+};
+
 export function runLedgerScenario(scenario: LedgerScenario, options: LedgerRunOptions = {}): LedgerRunResult {
   const balances = new Map<string, bigint>();
   const accountById = new Map<string, LedgerAccountInput>();
   const residualInterestNumerator = new Map<string, bigint>();
+  const positionState = new Map<string, PositionState>();
   const events: LedgerEvent[] = [];
   const captureDailyBalances = options.captureDailyBalances !== false;
   const stepDays = Math.max(1, Math.floor(options.stepDays || 1));
@@ -363,6 +421,15 @@ export function runLedgerScenario(scenario: LedgerScenario, options: LedgerRunOp
     balances.set(account.id, account.balanceCents);
     accountById.set(account.id, account);
     residualInterestNumerator.set(account.id, 0n);
+    if (account.position) {
+      positionState.set(account.id, {
+        quantityMicro: account.position.quantityMicro,
+        priceMicroCents: account.position.priceMicroCents,
+        priceResidualNumerator: 0n,
+        annualReturnPpm: account.position.annualReturnPpm,
+        acquisitions: []
+      });
+    }
   }
 
   // Day-0 state seeding (checkpoint adjustments). Applied exactly once per run with
@@ -455,6 +522,24 @@ export function runLedgerScenario(scenario: LedgerScenario, options: LedgerRunOp
         const toBal = balances.get(to) ?? 0n;
         balances.set(from, fromBal - grown);
         balances.set(to, toBal + grown);
+        // Contributions into a position buy shares at the day's opening price
+        // (PositionSemantics.md step 1). The transfer moves exact cents; the
+        // daily valuation event reconciles any sub-cent quantity rounding.
+        const targetPosition = positionState.get(to);
+        if (targetPosition && grown > 0n && targetPosition.priceMicroCents > 0n) {
+          const purchasedMicro = bankersRoundRational(
+            grown * MICRO_SQ,
+            targetPosition.priceMicroCents
+          );
+          targetPosition.quantityMicro += purchasedMicro;
+          targetPosition.acquisitions.push({
+            dayIndex: day,
+            date,
+            quantityMicro: purchasedMicro,
+            priceMicroCents: targetPosition.priceMicroCents,
+            costCents: grown
+          });
+        }
         const groupId = `${flow.id}:${day}:transfer`;
         events.push({
           id: `${groupId}:out`,
@@ -526,6 +611,37 @@ export function runLedgerScenario(scenario: LedgerScenario, options: LedgerRunOp
             1
           )
         : 1;
+
+      // Position accounts: advance the deterministic price path, then reset the
+      // balance to quantity × price (PositionSemantics.md steps 2–3). The single
+      // valuation event carries both market growth and purchase-rounding dust, so
+      // conservation (sum of events == balance delta) holds by construction.
+      const position = positionState.get(account.id);
+      if (position) {
+        const priceRate = multiplyCents(position.annualReturnPpm, rateScale);
+        if (priceRate !== 0n && position.priceMicroCents > 0n) {
+          const numer = position.priceMicroCents * priceRate + position.priceResidualNumerator;
+          const priceDelta = bankersRoundRational(numer, RATE_DENOM);
+          position.priceResidualNumerator = numer - priceDelta * RATE_DENOM;
+          position.priceMicroCents += priceDelta;
+        }
+        const targetValue = positionValueCents(position.quantityMicro, position.priceMicroCents);
+        const currentBalance = balances.get(account.id) ?? 0n;
+        const valuationDelta = targetValue - currentBalance;
+        if (valuationDelta !== 0n) {
+          balances.set(account.id, targetValue);
+          events.push({
+            id: `interest:${account.id}:${day}`,
+            dayIndex: day,
+            date,
+            type: 'interest',
+            accountId: account.id,
+            deltaCents: valuationDelta
+          });
+        }
+        continue;
+      }
+
       const rate = multiplyCents(account.annualRatePpm ?? 0n, rateScale);
       if (rate !== 0n) {
         const bal = balances.get(account.id) ?? 0n;
@@ -633,12 +749,23 @@ export function runLedgerScenario(scenario: LedgerScenario, options: LedgerRunOp
     monthlyMap.set(month, existing);
   }
 
+  const positions: LedgerPositionReport[] = Array.from(positionState.entries()).map(
+    ([accountId, state]) => ({
+      accountId,
+      quantityMicro: state.quantityMicro,
+      priceMicroCents: state.priceMicroCents,
+      valueCents: positionValueCents(state.quantityMicro, state.priceMicroCents),
+      acquisitions: state.acquisitions
+    })
+  );
+
   return {
     events,
     dailyBalances,
     netWorthByDay,
     monthlyAggregates: Array.from(monthlyMap.values()).sort((a, b) => a.month.localeCompare(b.month)),
-    cumulativeRoundingLossCents
+    cumulativeRoundingLossCents,
+    positions
   };
 }
 
@@ -880,6 +1007,43 @@ export function buildPlanLedgerScenario(params: {
   let seededDebtsCents = 0n;
 
   for (const a of alt.asset) {
+    // Positions (D4): the seed row follows checkpoint precedence (live/connected >
+    // checkpoint snapshot > current row); rate config always comes from the current
+    // row. Connected rows stay balance-based — their live value is authoritative.
+    const seedRow =
+      !checkpoint || a.dataSource === 'connected'
+        ? a
+        : (findCheckpointRow(checkpoint.assets, a) ?? a);
+    if (a.dataSource !== 'connected' && isPositionRow(seedRow)) {
+      const quantityMicro = microSharesFromNumber(Number(seedRow.quantity) || 0);
+      const priceMicroCents = microCentsFromDollars(Number(seedRow.liveprice) || 0);
+      const balanceCents = positionValueCents(quantityMicro, priceMicroCents);
+      seededAssetsCents += balanceCents;
+      accounts.push({
+        id: `asset:${a.uuid}`,
+        name: a.name,
+        kind: 'asset',
+        balanceCents,
+        position: {
+          quantityMicro,
+          priceMicroCents,
+          annualReturnPpm: pctToPpm(Number(a.apy) || 0)
+        }
+      });
+      const positionRecurAmt = Number(a.recurAmt) || 0;
+      if (positionRecurAmt > 0) {
+        recurringFlows.push({
+          id: `assetcontrib:${a.uuid}`,
+          name: a.name,
+          type: 'transfer',
+          amountCents: centsFromNumber(positionRecurAmt),
+          frequency: planFrequency(a.recurFreq),
+          fromAccountId: 'cash',
+          toAccountId: `asset:${a.uuid}`
+        });
+      }
+      continue;
+    }
     const balanceCents = centsFromNumber(seededBalance(a, checkpoint?.assets));
     seededAssetsCents += balanceCents;
     accounts.push({

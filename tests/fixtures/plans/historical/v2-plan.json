@@ -1,0 +1,185 @@
+{
+  "schemaVersion": "2.0",
+  "alternatives": {
+    "Baseline": {
+      "income": [
+        {
+          "uuid": "inc-1",
+          "name": "Salary",
+          "amount": 6500,
+          "freq": "monthly",
+          "start": "2026-01-01",
+          "raise": 3,
+          "dataSource": "manual"
+        }
+      ],
+      "expense": [
+        {
+          "uuid": "exp-1",
+          "name": "Rent",
+          "amount": 2100,
+          "freq": "monthly",
+          "start": "2026-01-01",
+          "infl": 2,
+          "dataSource": "manual"
+        }
+      ],
+      "asset": [
+        {
+          "uuid": "asset-apy",
+          "mode": "APY",
+          "name": "HYSA",
+          "value": 25000,
+          "apy": 4.0,
+          "recurAmt": 500,
+          "recurFreq": "monthly"
+        },
+        {
+          "uuid": "asset-ticker-qty",
+          "mode": "Ticker",
+          "name": "Index fund",
+          "ticker": "VTI",
+          "value": 30000,
+          "apy": 8,
+          "quantity": 100,
+          "liveprice": 300,
+          "recurAmt": 1000,
+          "recurFreq": "monthly"
+        },
+        {
+          "uuid": "asset-ticker-noqty",
+          "mode": "Ticker",
+          "name": "Tech stock",
+          "ticker": "MSFT",
+          "value": 5000,
+          "apy": 10,
+          "quantity": 0,
+          "liveprice": 250
+        },
+        {
+          "uuid": "asset-connected",
+          "mode": "Manual",
+          "name": "Checking",
+          "value": 0,
+          "dataSource": "connected",
+          "connectedAccountId": "acc_1",
+          "autoValue": 4200,
+          "manualValue": null,
+          "overrideActive": false
+        }
+      ],
+      "debt": [
+        {
+          "uuid": "debt-1",
+          "name": "Student loan",
+          "bal": 18000,
+          "apr": 5.5,
+          "pmt": 400,
+          "freq": "monthly",
+          "start": "2026-01-01"
+        }
+      ]
+    },
+    "Stretch": {
+      "income": [],
+      "expense": [],
+      "asset": [],
+      "debt": []
+    }
+  },
+  "activeAlt": "Baseline",
+  "altChartEnabled": { "Baseline": true, "Stretch": false },
+  "altColors": { "Baseline": "#22d3ee" },
+  "assumptions": { "inflation": 2.5, "start": "2026-01-01", "finnhubKey": "test-local-key" },
+  "forecastSeed": "fixture-seed",
+  "forecastFingerprint": "",
+  "lastRun": null,
+  "lastSaved": "2026-06-01T00:00:00.000Z",
+  "checkpoints": {
+    "Baseline": [
+      {
+        "checkpointId": "cp-1",
+        "alt": "Baseline",
+        "date": "2026-05-01",
+        "type": "monthly",
+        "netWorth": 46200,
+        "assets": [
+          {
+            "uuid": "asset-ticker-qty",
+            "mode": "Ticker",
+            "name": "Index fund",
+            "ticker": "VTI",
+            "value": 29000,
+            "apy": 8,
+            "quantity": 100,
+            "liveprice": 290
+          }
+        ],
+        "debts": [],
+        "income": [],
+        "expenses": [],
+        "provenance": "user",
+        "source": "manual",
+        "confidence": "high",
+        "createdAt": "2026-05-01T12:00:00.000Z",
+        "immutable": true
+      }
+    ]
+  },
+  "checkpointSettings": {
+    "autoCreateMonthly": true,
+    "lastCheckpointDate": "2026-05-01",
+    "driftThreshold": 0.15
+  },
+  "ignoredDriftWarnings": {},
+  "augments": [
+    {
+      "id": "aug-1",
+      "name": "Bonus",
+      "category": "income",
+      "description": "",
+      "enabled": true,
+      "activation": { "type": "fixed-date", "startDate": "2026-07-01", "probability": 0.5 },
+      "effects": [{ "type": "add-income", "amount": 3000 }],
+      "duration": { "type": "instant", "months": 0 }
+    },
+    {
+      "id": "aug-legacy-recurring",
+      "name": "Legacy recurring augment",
+      "category": "global",
+      "description": "Unsupported activation type kept for lossless migration",
+      "enabled": true,
+      "activation": { "type": "recurring", "startDate": "2026-07-01", "probability": 1, "frequency": "monthly" },
+      "effects": [{ "type": "add-expense", "amount": 100 }],
+      "duration": { "type": "permanent" }
+    }
+  ],
+  "goals": {
+    "Baseline": [
+      {
+        "id": "goal-1",
+        "name": "Emergency fund",
+        "type": "savings",
+        "targetValue": 20000,
+        "targetDate": "2027-01-01"
+      }
+    ]
+  },
+  "pipeline": {
+    "byAlt": {
+      "Baseline": {
+        "edges": [
+          { "from": "income:0", "to": "asset:0", "mode": "fixed", "amount": 250, "freq": "monthly" }
+        ],
+        "layout": { "income:0": { "x": 10, "y": 20 } }
+      }
+    }
+  },
+  "plaidConfig": {
+    "clientId": "",
+    "environment": "production",
+    "backendApiUrl": "http://localhost:3000",
+    "enabled": false
+  },
+  "isSampleData": false
+}

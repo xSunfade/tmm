@@ -7,7 +7,7 @@ Practical go/no-go list for the first public release. Items marked **[BLOCKER]**
 - [ ] **[BLOCKER]** Browser tab title / meta / favicon are real (currently "frontend")
 - [ ] **[BLOCKER]** Onboarding + sample data verified on a fresh account (exists — verify)
 - [ ] Monte Carlo band + Resample Forecast explained in UI (UX-F)
-- [ ] Ticker asset mode either works in the ledger or is labeled honestly (BUG-6)
+- [x] Ticker asset mode works in the ledger (BUG-6 resolved Phase 3.2 — positions with deterministic price path + DCA)
 - [ ] Feature gates match the launch decision (TMM+ visible? waitlist?) — open-questions #2/#3
 
 ## Technical

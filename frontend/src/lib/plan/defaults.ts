@@ -4,7 +4,7 @@ import { generateForecastSeed } from '../simulation/forecastSeed';
 export const DEFAULT_START_DATE = new Date().toISOString().slice(0, 10);
 
 export const DEFAULT_PLAN_STATE: PlanState = {
-  schemaVersion: '2.0',
+  schemaVersion: '3.0',
   alternatives: {
     Baseline: { income: [], expense: [], asset: [], debt: [] }
   },

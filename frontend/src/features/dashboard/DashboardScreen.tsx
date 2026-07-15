@@ -13,6 +13,7 @@ import { loadSimulationSettings, saveSimulationSettings } from '../../lib/simula
 import { useAppState } from '../../state/appState';
 import { authFetch } from '../../lib/api/authFetch';
 import { withResampledForecastSeed } from '../../lib/simulation/forecastSeed';
+import { getPlanSanityWarnings } from '../../lib/plan/sanityWarnings';
 import { runSimulationInWorker } from '../../lib/simulation/simulationWorkerHost';
 import {
   buildSimulationCacheKey,
@@ -65,6 +66,7 @@ export function DashboardScreen() {
   );
 
   const [remoteHistoricalSeries, setRemoteHistoricalSeries] = React.useState<SimulationSeries[]>([]);
+  const sanityWarnings = React.useMemo(() => getPlanSanityWarnings(planState), [planState]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -325,6 +327,7 @@ export function DashboardScreen() {
                 <button
                   type="button"
                   className="dashboard-hero__action"
+                  title="Re-rolls the random draws used for chance-based life events (augments with a probability). Your plan and assumptions don't change — only which chance events fire in each simulated run."
                   onClick={() => dispatch({ type: 'hydrate', plan: withResampledForecastSeed(planState) })}
                 >
                   Resample
@@ -466,9 +469,16 @@ export function DashboardScreen() {
             <div>
               <h2 className="text-sm font-semibold text-slate-200">Net Worth Projection</h2>
               <div className="text-[11px] text-slate-500">
-                {summary.forecastView === 'range'
-                  ? `P10–P90 · ${simulation.monteCarloRuns || monteCarloRuns} outcomes`
-                  : 'P50 most likely'}
+                {summary.forecastView === 'range' ? (
+                  <span
+                    className="cursor-help underline decoration-dotted underline-offset-2"
+                    title="The shaded band shows the spread of outcomes when your plan's chance-based life events (augments with a probability) do or don't happen across many simulated runs. 90% of simulated runs end above the P10 line and 10% end above the P90 line. It is not a market prediction — investment growth uses your assumed returns."
+                  >
+                    P10–P90 · {simulation.monteCarloRuns || monteCarloRuns} outcomes
+                  </span>
+                ) : (
+                  'P50 most likely'
+                )}
                 {simulationLoading ? <span className="ml-2 text-emerald-300">Updating…</span> : null}
               </div>
             </div>
@@ -497,6 +507,19 @@ export function DashboardScreen() {
               );
             })}
           </div>
+          {sanityWarnings.length > 0 ? (
+            <div
+              className="mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-200"
+              data-testid="plan-sanity-warnings"
+            >
+              <div className="font-semibold text-amber-100">Plan sanity check</div>
+              <ul className="mt-1 list-disc space-y-1 pl-4">
+                {sanityWarnings.map((warning) => (
+                  <li key={warning.id}>{warning.message}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
           {simulationError ? (
             <div
               className="mt-4 rounded-lg border border-rose-500/40 bg-rose-500/10 p-4 text-sm text-rose-200"

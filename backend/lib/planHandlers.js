@@ -9,7 +9,8 @@ export const PLAN_SIZE_WARN_BYTES = 1 * 1024 * 1024; // warn at 1 MB (D14)
 export const PLAN_SIZE_MAX_BYTES = 5 * 1024 * 1024; // reject above 5 MB (D14)
 export const PLAN_REVISION_KEEP = 20; // rolling revisions per user (D14)
 
-export const SUPPORTED_PLAN_SCHEMA_VERSIONS = new Set(['2.0']);
+// 2.0 stays accepted so pre-v3 clients/offline caches can still save (D14).
+export const SUPPORTED_PLAN_SCHEMA_VERSIONS = new Set(['2.0', '3.0']);
 
 const REVISION_REASONS = new Set(['save', 'pre_import', 'pre_migration', 'manual']);
 

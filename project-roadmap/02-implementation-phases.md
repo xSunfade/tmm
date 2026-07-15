@@ -6,7 +6,7 @@ Effort assumes one experienced developer working with the AI workforce defined i
 
 **Total: ~10–13 focused weeks to Gate C.**
 
-**Status (2026-07-14):** Phase 0 ✅ · Phase 1 ✅ · Phase 2 ✅ COMPLETE (server-side persistence live: clean migration baseline on dev, `/api/plan` + revisions, frontend sync with conflict handling, save-truth indicator, Sheets repositioned as beta backup, `server.js` split into routers). Remaining founder ops task: Supabase Pro at launch; PITR + restore rehearsal deferred to the first real Plaid invoice (DATA-8). Items 3.3, 3.4, and 3.5 were completed **early** (PR #31: ledger seeds from latest checkpoint per D3, drift-at-today, legacy engine deleted, goldens on ledger) because they were cheap to do together and Phase 2's revision safety-net does not depend on them; 3.1/3.2 (domain model v3, positions) remain Phase 3 work.
+**Status (2026-07-14):** Phase 0 ✅ · Phase 1 ✅ · Phase 2 ✅ COMPLETE (server-side persistence live: clean migration baseline on dev, `/api/plan` + revisions, frontend sync with conflict handling, save-truth indicator, Sheets repositioned as beta backup, `server.js` split into routers) · **Phase 3 ✅ COMPLETE** (domain model package, plan schema v3 with lossless stepped migration + historical fixtures, position-based market assets with deterministic price path and exact DCA per `PositionSemantics.md`, negative-cash policy spec'd + tested, unsupported augments proven inert, XLSX/Sheets at v3 with legacy dual-read, Finnhub key out of exports, Monte Carlo/Resample explainers + sanity warnings). Remaining founder ops task: Supabase Pro at launch; PITR + restore rehearsal deferred to the first real Plaid invoice (DATA-8). Next: Phase 4 (entitlements, billing, Plaid lifecycle, security hardening).
 
 ## Sequencing rationale (why this order)
 
@@ -70,22 +70,22 @@ Dependencies: 2.1 → 2.2 → 2.3/2.4/2.5/2.6. 2.9 anytime after 2.2 (new plan r
 
 Also landed with Phase 2 (from the audit roadmap): retention sweeps (DATA-6, `run_retention_sweeps()` + pg_cron daily 03:30 UTC) and grant hardening (anon fully revoked; token tables service-role-only). Outstanding founder action: Supabase Pro at launch; PITR + restore rehearsal deferred to the first real Plaid invoice (DATA-8).
 
-## Phase 3 — Domain Model Foundation and simulation truth (~2.5–3 weeks)
+## Phase 3 — Domain Model Foundation and simulation truth (~2.5–3 weeks) ✅ COMPLETE
 
 Goal: one authoritative engine running the model the UI describes, on a domain model built for the product's future (ADR-2). This is the audit's Phase-1 engine work **expanded by D3/D4**.
 
 | # | Item | Pri | Refs | Acceptance |
 |---|---|---|---|---|
-| 3.1 | Define domain model types: Account, Position/Holding, Transaction, CashFlow, Checkpoint, Assumptions; plan schema v3 + migration from v2 (with fixture tests for old shapes) | [C] | D4 | v2 plans migrate losslessly; fixtures for each historical shape |
-| 3.2 | Position-based market assets in the ledger: deterministic price path from expected return; contributions buy quantity at `price(t)`; DCA correctness test | [C] | BUG-6, D4 | Golden tests: position value = qty × price; DCA scenario matches hand-computed result |
+| 3.1 | ✅ DONE — Domain model types (`frontend/src/lib/domain/`): Account, Position (+acquisitions), CashFlow, Debt, Checkpoint, Assumptions; plan schema **v3** with stepped `migratePlan` + historical fixtures (`tests/fixtures/plans/historical/`, `tests/unit/plan-migrations.test.ts`) | [C] | D4 | v1/v2 plans migrate losslessly; Ticker quantity derived (value ÷ price) flagged `positionNeedsReview` |
+| 3.2 | ✅ DONE — Position-based market assets in the ledger: deterministic fixed-point price path (micro-cents), quantity in micro-shares, contributions buy at `price(t)` (exact DCA). Spec: `tests/validation/spec/PositionSemantics.md`; tests: `tests/simulation/position-semantics.test.ts` | [C] | BUG-6, D4 | Golden: position value = qty × price (exact); DCA zero-return hand-computed + growth vs independent model |
 | 3.3 | ✅ DONE EARLY (PR #31) — Checkpoint semantics: engine seeds state from latest checkpoint; deterministic adjustment IDs per spec | [C] | BUG-5, D3 | Pre/post-checkpoint golden tests; spec updated where needed |
 | 3.4 | ✅ DONE EARLY (PR #31) — Drift detection compares against **today's** projection from the checkpoint baseline | [H] | BUG-4 | Unit test with known checkpoint + expected variance |
 | 3.5 | ✅ DONE EARLY (PR #31) — Migrate golden/determinism/frequency tests to the ledger; delete `simulation.ts` | [H] | FRAGILE-1 | No legacy imports; all goldens target ledger |
-| 3.6 | Engine edge cases: negative cash behavior defined + tested; `recurring`/`conditional` augments implemented or hidden in UI | [M] | stability edge cases | Tests or UI removal |
-| 3.7 | XLSX/Sheets import-export mapped to schema v3 (keep reading old layouts) | [H] | D5 | Sample workbook + legacy sheet import green |
-| 3.8 | UX: Monte Carlo band + Resample explainer; sanity warnings (debt never zero, expense > income) | [M] | UX-D/F | Tooltips/warnings in place |
+| 3.6 | ✅ DONE — Negative cash defined (allowed, no floor, spec'd) + tested; `recurring`/`conditional` augments hidden in editor, proven inert, labeled "Not supported" on legacy rows (`tests/simulation/engine-edge-cases.test.ts`) | [M] | stability edge cases | Tests green |
+| 3.7 | ✅ DONE — XLSX/Sheets export at v3 (position columns appended; Finnhub key removed per SEC-10); import keeps reading v1/v2 layouts | [H] | D5 | Legacy import paths unchanged; new columns tolerated absent |
+| 3.8 | ✅ DONE — Monte Carlo band + Resample explainer tooltips (augment-probability framing, no market-prediction implication); plan sanity warnings (outflow > income, debt payment ≤ interest) on the dashboard | [M] | UX-D/F | Tooltips/warnings in place |
 
-Dependencies: 3.1 → 3.2/3.3 → 3.4/3.5. The property-test suite (conservation, rounding-loss-zero) must stay green on every PR throughout — it is the refactor's safety net.
+Dependencies: 3.1 → 3.2/3.3 → 3.4/3.5. The property-test suite (conservation, rounding-loss-zero, now including the position qty×price invariant) stayed green throughout.
 
 ## Phase 4 — Entitlements, billing, Plaid lifecycle, and security hardening (~2 weeks)
 

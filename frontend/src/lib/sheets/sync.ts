@@ -313,9 +313,11 @@ function mapAlternatives(plan: PlanState) {
 }
 
 function mapSettings(plan: PlanState) {
+  // SEC-10 (schema v3): the Finnhub key is a device-local secret and is never
+  // exported. Legacy sheets containing a FinnhubKey column are still read on import.
   return [
-    ['Inflation', 'Start', 'FinnhubKey'],
-    [plan.assumptions.inflation, plan.assumptions.start, plan.assumptions.finnhubKey || '']
+    ['Inflation', 'Start'],
+    [plan.assumptions.inflation, plan.assumptions.start]
   ];
 }
 
@@ -379,7 +381,10 @@ function mapEntitiesForAlt(altName: string, alt: Alternative, plan: PlanState) {
       'ManualValue',
       'OverrideActive',
       'LastSyncedAt',
-      'LastOverriddenAt'
+      'LastOverriddenAt',
+      // Schema v3 (D4) columns appended last so legacy parsers keep working.
+      'AcquisitionsJSON',
+      'PositionNeedsReview'
     ],
     ...alt.asset.map((a) => [
       a.uuid,
@@ -401,7 +406,9 @@ function mapEntitiesForAlt(altName: string, alt: Alternative, plan: PlanState) {
       a.manualValue ?? '',
       a.overrideActive ? 'TRUE' : 'FALSE',
       a.lastSyncedAt || '',
-      a.lastOverriddenAt || ''
+      a.lastOverriddenAt || '',
+      JSON.stringify(a.acquisitions || []),
+      a.positionNeedsReview ? 'TRUE' : 'FALSE'
     ])
   ];
   const debts = [
@@ -526,7 +533,7 @@ export function planToSheets(plan: PlanState) {
     ],
     TMM_META: [
       ['export_version', 'exported_at', 'forecast_seed', 'forecast_fingerprint'],
-      ['2.0', new Date().toISOString(), plan.forecastSeed || '', plan.forecastFingerprint || '']
+      ['3.0', new Date().toISOString(), plan.forecastSeed || '', plan.forecastFingerprint || '']
     ]
   };
 
@@ -1123,7 +1130,7 @@ export async function loadPlanFromSheets(spreadsheetId: string, preFetchedToken?
     const incomeRange = `Income${suffix}!A1:M`;
     const incomeSheet = await readSheet(spreadsheetId, incomeRange, sessionToken);
     const expenseSheet = await readSheet(spreadsheetId, `Expenses${suffix}!A1:N`, sessionToken);
-    const assetSheet = await readSheet(spreadsheetId, `Assets${suffix}!A1:S`, sessionToken);
+    const assetSheet = await readSheet(spreadsheetId, `Assets${suffix}!A1:V`, sessionToken);
     const debtSheet = await readSheet(spreadsheetId, `Debts${suffix}!A1:N`, sessionToken);
     const layoutSheet = await readSheet(spreadsheetId, `PB Layout${suffix}!A1:E`, sessionToken);
     const flowsSheet = await readSheet(spreadsheetId, `PB Flows${suffix}!A1:H`, sessionToken);
@@ -1136,28 +1143,43 @@ export async function loadPlanFromSheets(spreadsheetId: string, preFetchedToken?
       plan.assumptions.start
     );
     const assetRows = rowsToObjects(assetSheet.values ?? []);
-    plan.alternatives[altName].asset = assetRows.map((row) => ({
-      uuid: get(row, 'UUID') || '',
-      mode: (get(row, 'Mode') as any) || 'Manual',
-      name: get(row, 'Name') || '',
-      group: get(row, 'Group') || '',
-      value: Number(get(row, 'CurrentValue')) || 0,
-      apy: Number(get(row, 'APY')) || 0,
-      ticker: get(row, 'Ticker') || '',
-      quantity: Number(get(row, 'Qty')) || 0,
-      liveprice: Number(get(row, 'LivePrice')) || 0,
-      recurAmt: Number(get(row, 'RecurringContribution')) || 0,
-      recurFreq: (get(row, 'Frequency') as any) || 'monthly',
-      totalContrib: Number(get(row, 'TotalContribution')) || 0,
-      source: get(row, 'Source') || '',
-      dataSource: (get(row, 'DataSource') as any) || 'manual',
-      connectedAccountId: get(row, 'ConnectedAccountId') || '',
-      autoValue: get(row, 'AutoValue') ? Number(get(row, 'AutoValue')) : null,
-      manualValue: get(row, 'ManualValue') ? Number(get(row, 'ManualValue')) : null,
-      overrideActive: get(row, 'OverrideActive') === 'TRUE',
-      lastSyncedAt: get(row, 'LastSyncedAt') || null,
-      lastOverriddenAt: get(row, 'LastOverriddenAt') || null
-    }));
+    plan.alternatives[altName].asset = assetRows.map((row) => {
+      // v3 columns; absent on legacy sheets — migratePlan backfills.
+      let acquisitions: unknown = undefined;
+      const rawAcquisitions = get(row, 'AcquisitionsJSON');
+      if (rawAcquisitions.trim()) {
+        try {
+          const parsed = JSON.parse(rawAcquisitions);
+          if (Array.isArray(parsed)) acquisitions = parsed;
+        } catch {
+          // tolerate malformed cells; treated as absent
+        }
+      }
+      return {
+        uuid: get(row, 'UUID') || '',
+        mode: (get(row, 'Mode') as any) || 'Manual',
+        name: get(row, 'Name') || '',
+        group: get(row, 'Group') || '',
+        value: Number(get(row, 'CurrentValue')) || 0,
+        apy: Number(get(row, 'APY')) || 0,
+        ticker: get(row, 'Ticker') || '',
+        quantity: Number(get(row, 'Qty')) || 0,
+        liveprice: Number(get(row, 'LivePrice')) || 0,
+        recurAmt: Number(get(row, 'RecurringContribution')) || 0,
+        recurFreq: (get(row, 'Frequency') as any) || 'monthly',
+        totalContrib: Number(get(row, 'TotalContribution')) || 0,
+        source: get(row, 'Source') || '',
+        dataSource: (get(row, 'DataSource') as any) || 'manual',
+        connectedAccountId: get(row, 'ConnectedAccountId') || '',
+        autoValue: get(row, 'AutoValue') ? Number(get(row, 'AutoValue')) : null,
+        manualValue: get(row, 'ManualValue') ? Number(get(row, 'ManualValue')) : null,
+        overrideActive: get(row, 'OverrideActive') === 'TRUE',
+        lastSyncedAt: get(row, 'LastSyncedAt') || null,
+        lastOverriddenAt: get(row, 'LastOverriddenAt') || null,
+        ...(acquisitions !== undefined ? { acquisitions: acquisitions as any } : {}),
+        ...(get(row, 'PositionNeedsReview') === 'TRUE' ? { positionNeedsReview: true } : {})
+      };
+    });
     const debtRows = rowsToObjects(debtSheet.values ?? []);
     plan.alternatives[altName].debt = debtRows.map((row) => ({
       uuid: get(row, 'UUID') || '',

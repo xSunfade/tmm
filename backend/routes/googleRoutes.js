@@ -10,6 +10,8 @@ import {
   getGoogleTokens,
   removeGoogleTokens
 } from '../storage/googleTokens.js';
+import { createOAuthState, consumeOAuthState } from '../lib/oauthState.js';
+import { writeAuditLog } from '../lib/auditLog.js';
 
 function getGoogleConfigOrThrow() {
   if (!config.google.clientId || !config.google.clientSecret || !config.google.redirectUri) {
@@ -18,7 +20,7 @@ function getGoogleConfigOrThrow() {
   return config.google;
 }
 
-function buildGoogleAuthUrl(userId) {
+function buildGoogleAuthUrl(state) {
   const google = getGoogleConfigOrThrow();
   const params = new URLSearchParams({
     client_id: google.clientId,
@@ -27,7 +29,8 @@ function buildGoogleAuthUrl(userId) {
     access_type: 'offline',
     prompt: 'consent',
     scope: google.scopes,
-    state: userId
+    // SEC-3: signed, single-use, TTL-bound, user-bound nonce — never a user id.
+    state
   });
   return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
 }
@@ -169,29 +172,52 @@ const router = express.Router();
 // Google OAuth - get authorization URL
 router.post('/api/google/oauth/authorize', requireAuth, async (req, res, next) => {
   try {
-    const url = buildGoogleAuthUrl(req.userId);
+    const state = await createOAuthState(req.userId, { purpose: 'google_sheets' });
+    const url = buildGoogleAuthUrl(state);
     res.json({ url });
   } catch (err) {
     next(err);
   }
 });
 
-// Google OAuth callback
+// Google OAuth callback. Unauthenticated by nature (browser redirect from
+// Google); the state nonce is the authentication — it must resolve to the
+// exact user who initiated the flow (SEC-3), exactly once.
 router.get('/api/google/oauth/callback', async (req, res, next) => {
   try {
     const { code, state } = req.query;
     if (!code || !state) {
       return res.status(400).json({ error: 'Missing OAuth code or state' });
     }
+
+    const consumed = await consumeOAuthState(String(state), { purpose: 'google_sheets' });
+    if (!consumed.ok) {
+      console.warn(JSON.stringify({
+        type: 'oauth_state_rejected',
+        requestId: req.requestId || 'unknown',
+        reason: consumed.reason,
+        timestamp: new Date().toISOString()
+      }));
+      // Generic error to the caller; detail stays in logs.
+      return res.status(400).json({ error: 'Invalid or expired OAuth state' });
+    }
+    const userId = consumed.userId;
+
     const tokenResponse = await exchangeCodeForTokens(code);
     const profile = await fetchGoogleProfile(tokenResponse.access_token);
     const expiresAt = new Date(Date.now() + tokenResponse.expires_in * 1000).toISOString();
-    await storeGoogleTokens(state, {
+    await storeGoogleTokens(userId, {
       access_token: tokenResponse.access_token,
       refresh_token: tokenResponse.refresh_token,
       expires_at: expiresAt,
       google_user_id: profile?.id || null,
       google_user_email: profile?.email || null
+    });
+    await writeAuditLog({
+      userId,
+      actor: 'user',
+      action: 'google.sheets_connected',
+      metadata: {}
     });
     const base = config.google.frontendRedirect || '/';
     const sep = base.includes('?') ? '&' : '?';

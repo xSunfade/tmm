@@ -3,6 +3,7 @@
 
 import { supabase } from '../supabaseClient.js';
 import { supabaseAdmin } from '../supabaseClient.js';
+import { createEntitlementResolver } from '../lib/entitlements.js';
 
 /**
  * Middleware to require authentication for protected routes
@@ -61,12 +62,77 @@ export async function requireAuth(req, res, next) {
   }
 }
 
+// Table-driven entitlement resolution (ADR-3): tier and limits come from
+// plan_catalog + tier_entitlements rows via one resolver, never inline checks.
+const resolveEntitlements = supabaseAdmin
+  ? createEntitlementResolver({ supabaseAdmin })
+  : null;
+
+/** Direct access to the resolver for routes that need limits, not just a gate. */
+export async function getEntitlementsForUser(userId) {
+  if (!resolveEntitlements) {
+    throw new Error('Entitlement resolver unavailable (no Supabase admin client)');
+  }
+  return resolveEntitlements(userId);
+}
+
 /**
- * Middleware to require TMM+ plan tier for Plaid and other paid features.
- * Must be used after requireAuth (req.userId must be set).
- * Returns 403 with clear message if user is on Free tier or has no profile.
+ * Middleware factory: require a boolean entitlement flag (e.g. 'plaidEnabled').
+ * Must be used after requireAuth. Attaches the resolved entitlements to
+ * req.entitlements so handlers can read limits (maxPlaidItems etc.) without a
+ * second resolution.
  */
-export async function requireTmmPlus(req, res, next) {
+export function requireEntitlement(flag) {
+  return async function requireEntitlementMiddleware(req, res, next) {
+    try {
+      if (!req.userId) {
+        return res.status(401).json({
+          error: 'Unauthorized',
+          message: 'Authentication required'
+        });
+      }
+      if (!resolveEntitlements) {
+        return res.status(503).json({
+          error: 'Service unavailable',
+          message: 'Entitlement check unavailable'
+        });
+      }
+
+      const resolved = await resolveEntitlements(req.userId);
+      req.entitlements = resolved;
+
+      if (!resolved.entitlements[flag]) {
+        return res.status(403).json({
+          error: 'This feature is available on TMM+',
+          message: 'Upgrade to TMM+ to connect bank accounts with Plaid.',
+          code: 'TIER_REQUIRED',
+          tier: resolved.tier
+        });
+      }
+
+      next();
+    } catch (err) {
+      console.error('requireEntitlement error:', err);
+      return res.status(500).json({
+        error: 'Internal server error',
+        message: 'Entitlement validation failed'
+      });
+    }
+  };
+}
+
+/**
+ * Require TMM+ (or higher) for Plaid routes. Kept under its historical name so
+ * existing route definitions stay unchanged; internally this is the
+ * entitlement resolver gating on plaidEnabled (ADR-3).
+ */
+export const requireTmmPlus = requireEntitlement('plaidEnabled');
+
+/**
+ * Middleware to require the admin role (Phase 4.11) for ops routes.
+ * Must be used after requireAuth. profiles.is_admin is set only via SQL.
+ */
+export async function requireAdmin(req, res, next) {
   try {
     if (!req.userId) {
       return res.status(401).json({
@@ -77,38 +143,34 @@ export async function requireTmmPlus(req, res, next) {
     if (!supabaseAdmin) {
       return res.status(503).json({
         error: 'Service unavailable',
-        message: 'Tier check unavailable'
+        message: 'Admin check unavailable'
       });
     }
     const { data: profile, error } = await supabaseAdmin
       .from('profiles')
-      .select('plan_tier')
+      .select('is_admin')
       .eq('id', req.userId)
       .maybeSingle();
-
     if (error) {
-      console.error('Tier check error:', error);
+      console.error('Admin check error:', error);
       return res.status(500).json({
         error: 'Internal server error',
-        message: 'Could not verify plan tier'
+        message: 'Could not verify admin role'
       });
     }
-
-    const tier = profile?.plan_tier ?? 'free';
-    if (tier !== 'tmm_plus') {
+    if (!profile?.is_admin) {
       return res.status(403).json({
-        error: 'Plaid is available on TMM+',
-        message: 'Upgrade to TMM+ to connect bank accounts with Plaid.',
-        code: 'TIER_REQUIRED'
+        error: 'Forbidden',
+        message: 'Admin role required',
+        code: 'ADMIN_REQUIRED'
       });
     }
-
     next();
   } catch (err) {
-    console.error('requireTmmPlus error:', err);
+    console.error('requireAdmin error:', err);
     return res.status(500).json({
       error: 'Internal server error',
-      message: 'Tier validation failed'
+      message: 'Admin validation failed'
     });
   }
 }

@@ -201,6 +201,14 @@ test('PUT rejects a missing plan object and unsupported schema versions', async 
     });
     assert.equal(badVersion.status, 400);
     assert.equal((await badVersion.json()).code, 'unsupported_schema_version');
+
+    // Schema v3 (Phase 3.1) is accepted alongside 2.0 for pre-v3 clients.
+    const v3 = await fetch(`${base}/api/plan`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(putBody({ schema_version: '3.0' }))
+    });
+    assert.equal(v3.status, 200);
   });
 });
 

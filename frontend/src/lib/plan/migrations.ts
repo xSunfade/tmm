@@ -24,6 +24,34 @@ function ensureAltShape(plan: PartialPlan) {
   });
 }
 
+export const CURRENT_PLAN_SCHEMA_VERSION = '3.0';
+
+/**
+ * v2 → v3 (Phase 3.1, D4): Ticker-mode assets become positions.
+ * - Backfills missing quantity from value ÷ liveprice (flagged `positionNeedsReview`
+ *   so the user can confirm the derived share count).
+ * - Ensures `acquisitions` exists on Ticker rows (empty; reserved for purchase history).
+ * Lossless: no fields are removed or overwritten.
+ */
+function migrateV2ToV3(plan: PartialPlan): void {
+  Object.values(plan.alternatives || {}).forEach((alt) => {
+    if (!alt || !Array.isArray(alt.asset)) return;
+    for (const row of alt.asset) {
+      if (!row || row.mode !== 'Ticker') continue;
+      const price = Number(row.liveprice) || 0;
+      const quantity = Number(row.quantity) || 0;
+      const value = Number(row.value) || 0;
+      if (quantity <= 0 && price > 0 && value > 0) {
+        row.quantity = value / price;
+        row.positionNeedsReview = true;
+      }
+      if (!Array.isArray(row.acquisitions)) {
+        row.acquisitions = [];
+      }
+    }
+  });
+}
+
 export function migratePlan(raw: unknown): PlanState {
   const next: PartialPlan = typeof raw === 'object' && raw ? { ...(raw as PartialPlan) } : {};
   next.schemaVersion = next.schemaVersion || '1.0';
@@ -96,10 +124,12 @@ export function migratePlan(raw: unknown): PlanState {
     next.activeAlt = Object.keys(alts)[0] || 'Baseline';
   }
 
+  migrateV2ToV3(next);
+
   return ensureForecastSeed({
     ...DEFAULT_PLAN_STATE,
     ...next,
-    schemaVersion: '2.0'
+    schemaVersion: CURRENT_PLAN_SCHEMA_VERSION
   } as PlanState);
 }
 

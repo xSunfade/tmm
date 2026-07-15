@@ -2,7 +2,7 @@
 
 Confirmed bugs first, then fragile areas and reliability risks. File references are to repo state **at audit time** — several findings are since fixed and marked ✅ RESOLVED below.
 
-**Resolution status (2026-07-06):** BUG-1 ✅ · BUG-2 ✅ · BUG-3 ✅ · BUG-4 ✅ · BUG-5 ✅ · BUG-7 ✅ (legacy engine deleted) · FRAGILE-1 ✅ · FRAGILE-2 ✅ · FRAGILE-3 ✅ · FRAGILE-5/6 ✅. Open: BUG-6 (Ticker modeling — deferred to the D4 domain-model workstream).
+**Resolution status (2026-07-14):** BUG-1 ✅ · BUG-2 ✅ · BUG-3 ✅ · BUG-4 ✅ · BUG-5 ✅ · **BUG-6 ✅** (Phase 3.2: Ticker assets are positions — quantity × deterministic price path, exact DCA; spec `tests/validation/spec/PositionSemantics.md`) · BUG-7 ✅ (legacy engine deleted) · FRAGILE-1 ✅ · FRAGILE-2 ✅ · FRAGILE-3 ✅ · FRAGILE-5/6 ✅. All audited bugs resolved.
 
 ## Confirmed bugs (from code)
 

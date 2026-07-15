@@ -99,7 +99,7 @@ export async function pushPlanToServer(
   const clientSavedAt = options.clientSavedAt || new Date().toISOString();
   const body: Record<string, unknown> = {
     plan: stripPlanForServer(plan),
-    schema_version: plan.schemaVersion || '2.0',
+    schema_version: plan.schemaVersion || '3.0',
     client_saved_at: clientSavedAt,
     reason: options.reason || 'save'
   };

@@ -47,7 +47,7 @@ One engine (the legacy float engine `simulation.ts` was deleted in Phase 1.5; al
 
 - **Production:** `frontend/src/lib/simulation/ledger.ts` — daily stepping over the full horizon, integer `bigint` cents, ppm fixed-point rates, banker's rounding with residual carry (documented zero cumulative rounding loss), seeded Monte Carlo (mulberry32; 20 runs, refined to 80 on idle) for probabilistic augments, P10/P50/P90 output. Seeds state from the latest checkpoint (D3/BUG-5) via a deterministic `checkpoint_adjust:<alt>:<date>` adjustment; drift compares today's actuals to today's projection from that baseline (BUG-4). Runs in a per-request web worker with a main-thread fallback and a 16-entry result cache.
 
-Known engine gaps (confirmed): Ticker-mode assets are collapsed to balance+APY (BUG-6, deferred to the D4 domain-model workstream).
+Known engine gaps: none open — Ticker-mode assets were collapsed to balance+APY (BUG-6) until Phase 3.2 implemented D4 positions (quantity × deterministic price path, exact DCA).
 
 ## Feature maturity
 

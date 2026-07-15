@@ -33,15 +33,27 @@ export type ExpenseRow = {
   lastOverriddenAt?: string | null;
 };
 
+/** One recorded share purchase (schema v3, D4). Admits future cost-basis features. */
+export type PositionAcquisition = {
+  date: string;
+  quantity: number;
+  pricePerShare: number;
+};
+
 export type AssetRow = {
   uuid: string;
   mode: 'Manual' | 'APY' | 'Ticker';
   name: string;
   group?: string;
   value?: number;
+  /** APY-mode: annual yield. Ticker-mode: assumed annual return of the simulated price path (D4). */
   apy?: number;
   quantity?: number;
   liveprice?: number;
+  /** Schema v3 (D4): recorded purchases for Ticker positions. */
+  acquisitions?: PositionAcquisition[];
+  /** True when the v2→v3 migration derived quantity from value ÷ price; user should confirm. */
+  positionNeedsReview?: boolean;
   totalContrib?: number;
   recurAmt?: number;
   recurFreq?: Frequency;
@@ -166,6 +178,10 @@ export type PipelineState = {
 export type PlanAssumptions = {
   inflation: number;
   start: string;
+  /**
+   * Device-local user secret (SEC-10). Never leaves the device: stripped from
+   * server saves (planSync) and from XLSX/Sheets exports (schema v3).
+   */
   finnhubKey: string;
 };
 

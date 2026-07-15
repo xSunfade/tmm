@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 import fc from 'fast-check';
 import {
   aggregateDailyNetWorthByMonth,
+  positionValueCents,
   runLedgerScenario,
   type LedgerAccountInput,
   type LedgerScenario,
@@ -36,17 +37,34 @@ function buildArbitraryScenario() {
     augmentCents: fc.integer({ min: 0, max: 100_000 }),
     augmentStart: fc.integer({ min: 0, max: 60 }),
     incomeFreq: fc.constantFrom('weekly', 'biweekly', 'monthly'),
-    expenseFreq: fc.constantFrom('weekly', 'biweekly', 'monthly')
+    expenseFreq: fc.constantFrom('weekly', 'biweekly', 'monthly'),
+    positionQuantityMicro: fc.integer({ min: 0, max: 500_000_000 }),
+    positionPriceMicroCents: fc.integer({ min: 1_000_000, max: 50_000_000_000 }),
+    positionReturnPpm: fc.integer({ min: 0, max: 150_000 }),
+    positionContribCents: fc.integer({ min: 0, max: 150_000 })
   }).map((v) => {
+    const positionQuantityMicro = BigInt(v.positionQuantityMicro);
+    const positionPriceMicroCents = BigInt(v.positionPriceMicroCents);
     const accounts: LedgerAccountInput[] = [
       { id: 'cash', kind: 'cash', balanceCents: toBigIntCents(v.cashStart) },
       { id: 'asset', kind: 'asset', balanceCents: toBigIntCents(v.assetStart), annualRatePpm: BigInt(v.assetRatePpm) },
-      { id: 'debt', kind: 'debt', balanceCents: toBigIntCents(v.debtStart), annualRatePpm: BigInt(v.debtRatePpm), allowNegative: false }
+      { id: 'debt', kind: 'debt', balanceCents: toBigIntCents(v.debtStart), annualRatePpm: BigInt(v.debtRatePpm), allowNegative: false },
+      {
+        id: 'position',
+        kind: 'asset',
+        balanceCents: positionValueCents(positionQuantityMicro, positionPriceMicroCents),
+        position: {
+          quantityMicro: positionQuantityMicro,
+          priceMicroCents: positionPriceMicroCents,
+          annualReturnPpm: BigInt(v.positionReturnPpm)
+        }
+      }
     ];
     const flows: RecurringFlow[] = [
       { id: 'income', type: 'income', amountCents: toBigIntCents(v.incomeCents), frequency: v.incomeFreq as any },
       { id: 'expense', type: 'expense', amountCents: toBigIntCents(v.expenseCents), frequency: v.expenseFreq as any },
       { id: 'transfer', type: 'transfer', amountCents: toBigIntCents(v.transferCents), frequency: 'monthly', fromAccountId: 'cash', toAccountId: 'asset' },
+      { id: 'position-contrib', type: 'transfer', amountCents: toBigIntCents(v.positionContribCents), frequency: 'monthly', fromAccountId: 'cash', toAccountId: 'position' },
       { id: 'augment-income', type: 'income', amountCents: toBigIntCents(v.augmentCents), frequency: 'weekly', startDayIndex: v.augmentStart }
     ];
     const scenario: LedgerScenario = {
@@ -131,6 +149,17 @@ async function run() {
 
         // Rounding loss policy.
         assert(result.cumulativeRoundingLossCents === 0n, 'rounding loss drifted from zero');
+
+        // Position invariant (D4, PositionSemantics.md): final balance == qty × price.
+        for (const report of result.positions) {
+          const recomputed = positionValueCents(report.quantityMicro, report.priceMicroCents);
+          assert(report.valueCents === recomputed, 'position report value is not qty × price');
+          const finalBalances = result.dailyBalances[result.dailyBalances.length - 1];
+          assert(
+            finalBalances[report.accountId] === recomputed,
+            'position balance drifted from qty × price'
+          );
+        }
       }),
       {
         numRuns,

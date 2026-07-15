@@ -19,7 +19,9 @@ The number on the chart is the product. Follow this procedure for any simulation
 - Determinism: same plan + same seed + same horizon = identical output. No `Date.now()`, no unseeded randomness inside the engine; use the injected clock/seed.
 - ADR-2 boundaries: engine internals are not imported outside the simulation package; the domain model imports nothing from the engine.
 - Checkpoints (D3): the engine seeds state from the **latest checkpoint** and projects forward; checkpoints use deterministic adjustment IDs; drift compares today's actuals to **today's** projection from that baseline (never horizon-end — that was BUG-4).
-- Positions (D4): market assets are `quantity × price(t)`; `price(t)` is a deterministic path from user assumptions; contributions buy shares at `price(t_contribution)` (exact DCA). v1 scope excludes dividends, splits, tax lots, capital gains, rebalancing, withdrawal strategies — do not add them without a design doc.
+- Positions (D4, **implemented Phase 3.2**): market assets are `quantity × price(t)`; `price(t)` is a deterministic path from user assumptions; contributions buy shares at `price(t_contribution)` (exact DCA). Spec: `tests/validation/spec/PositionSemantics.md` (fixed-point scales: micro-shares × micro-cents; daily ordering: buy → price accrual → valuation event). Ticker rows without a resolvable price fall back to balance+APY. Tests: `tests/simulation/position-semantics.test.ts`. v1 scope excludes dividends, splits, tax lots, capital gains, rebalancing, withdrawal strategies — do not add them without a design doc.
+- Negative cash (Phase 3.6): the synthetic `cash` account may go negative (unfunded shortfall, 0% implicit); never floor or clamp it in the engine — warnings are UI-only (`frontend/src/lib/plan/sanityWarnings.ts`). Tests: `tests/simulation/engine-edge-cases.test.ts`.
+- Domain model (ADR-2, Phase 3.1): `frontend/src/lib/domain/` holds Account/Position/CashFlow/Debt types + `buildDomainModel`; the engine may import domain, domain must never import the engine. Plan schema is **v3** (`migratePlan` is stepped; historical fixtures in `tests/fixtures/plans/historical/` + `tests/unit/plan-migrations.test.ts` — extend both for any schema change).
 
 ## Test procedure
 
@@ -35,7 +37,8 @@ The number on the chart is the product. Follow this procedure for any simulation
 - Drift uses `ForecastOptions.today` (drift metadata only — must never affect the simulated series) and compares against today's projection from the exact daily series.
 - `lastRun.series` cached output must not leak into persistence or fingerprints.
 - The 16-entry result cache is keyed by full input fingerprint — if you add an engine input, add it to the fingerprint or stale results will be served.
-- Monte Carlo today = augment probability only. Don't let copy or code imply market-path simulation.
+- Monte Carlo today = augment probability only. Don't let copy or code imply market-path simulation (the dashboard band/Resample explainers are written to this contract — keep them honest).
+- Position accounts emit one daily `interest` valuation event (growth + purchase-rounding dust together), so sum-of-events == balance-delta stays exact. Never add a second per-day event stream for positions.
 
 ## Handoff
 

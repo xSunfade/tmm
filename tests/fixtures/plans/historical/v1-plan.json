@@ -1,0 +1,20 @@
+{
+  "alternatives": {
+    "Baseline": {
+      "income": [
+        { "name": "Salary", "amount": 5000, "freq": "monthly", "start": "2025-06-01", "raise": 3 }
+      ],
+      "expense": [
+        { "name": "Rent", "amount": 1800, "freq": "monthly", "start": "2025-06-01", "infl": 2 }
+      ],
+      "asset": [
+        { "mode": "APY", "name": "Savings", "value": 12000, "apy": 4.2 }
+      ],
+      "debt": [
+        { "name": "Car loan", "bal": 9000, "apr": 6.5, "pmt": 350, "freq": "monthly", "start": "2025-06-01" }
+      ]
+    }
+  },
+  "activeAlt": "Baseline",
+  "assumptions": { "inflation": 2.5, "start": "2025-06-01", "finnhubKey": "" }
+}

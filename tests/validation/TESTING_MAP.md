@@ -31,7 +31,7 @@ Queue worker surface:
 
 ## 2) Supabase Tables in Scope
 
-Referenced by migrations in `backend/supabase/migrations/`:
+Defined by the canonical migrations in `supabase/migrations/`:
 
 - `plaid_tokens`: encrypted access token by item/user + sync cursor and coverage window.
 - `accounts`: connected financial accounts (CFA rows) and metadata.

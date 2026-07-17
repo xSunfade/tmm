@@ -153,14 +153,15 @@ TMM no longer relies on build-time injection into a root `index.html`; the front
 
 ## Step 5: Database Migration
 
-1. Go to Supabase Dashboard → **SQL Editor**
-2. Open the migration file: `backend/supabase/migrations/004_add_auth_tables.sql`
-3. Copy and paste the SQL into the editor
-4. Click **Run**
-5. Verify the `google_sheets_tokens` table was created:
+The `google_sheets_tokens` table (and everything else) is created by the canonical
+migration chain in `supabase/migrations/` — apply it with `supabase db push` (or the
+MCP `apply_migration` workflow); never paste SQL by hand.
+
+Verify:
    - Go to **Table Editor**
    - Check that `google_sheets_tokens` table exists
-   - Verify RLS policies are enabled
+   - RLS is enabled with anon denied; the table is service-role-only (no
+     authenticated policies — tokens are never readable from the browser)
 
 ## Step 6: Testing
 

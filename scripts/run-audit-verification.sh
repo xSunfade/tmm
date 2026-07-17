@@ -49,9 +49,8 @@ echo -e "${BLUE}=== B) RLS + Security Verification ===${NC}"
 echo ""
 
 echo "1. Checking RLS migration exists..."
-if [ -f "backend/supabase/migrations/002_add_anon_policies.sql" ]; then
-    echo -e "${GREEN}✅ RLS anon policies migration exists${NC}"
-    echo -e "${YELLOW}   ⚠️  Remember to execute this migration in Supabase SQL Editor${NC}"
+if [ -f "supabase/migrations/20260706185451_baseline.sql" ]; then
+    echo -e "${GREEN}✅ Canonical baseline migration (strict RLS + anon deny) exists${NC}"
     PASSED=$((PASSED + 1))
 else
     echo -e "${RED}❌ RLS anon policies migration missing${NC}"
@@ -83,8 +82,8 @@ else
 fi
 
 echo "2. Checking composite index migration..."
-if [ -f "backend/supabase/migrations/003_add_composite_index.sql" ]; then
-    echo -e "${GREEN}✅ Composite index migration exists${NC}"
+if grep -q "idx_transactions_account_id" supabase/migrations/20260706185451_baseline.sql 2>/dev/null; then
+    echo -e "${GREEN}✅ Composite/query indexes present in canonical baseline${NC}"
     PASSED=$((PASSED + 1))
 else
     echo -e "${YELLOW}⚠️  Composite index migration not found (optional)${NC}"

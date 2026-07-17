@@ -4,17 +4,22 @@ Read-only inspection of the Supabase, Vercel, and Stripe environments connected 
 
 ## Supabase
 
-**One project** (confirms the audit's inference and D17's starting point):
+**Two projects** (dev since 2026-01-10; staging added 2026-07-17 per Phase 5.1):
 
-| Property | Value |
-|---|---|
-| Name / ID | "The Money Machine" / `mkhmaqksodfwccheflpw` |
-| Org | `ouzftkvgnskwgxjtewsc` |
-| Region | us-east-1 |
-| Postgres | 17.6 (GA channel) |
-| Status | ACTIVE_HEALTHY |
-| Created | 2026-01-10 |
-| DB host | `db.mkhmaqksodfwccheflpw.supabase.co` |
+| Property | dev | staging |
+|---|---|---|
+| Name / ID | "The Money Machine" / `mkhmaqksodfwccheflpw` | "tmm-staging" / `wekawukfpdqinesbltnx` |
+| Org | `ouzftkvgnskwgxjtewsc` | `ouzftkvgnskwgxjtewsc` |
+| Region | us-east-1 | us-east-1 |
+| Postgres | 17.6 (GA channel) | 17.6 (GA channel) |
+| Status | ACTIVE_HEALTHY | ACTIVE_HEALTHY |
+| Created | 2026-01-10 | 2026-07-17 |
+| DB host | `db.mkhmaqksodfwccheflpw.supabase.co` | `db.wekawukfpdqinesbltnx.supabase.co` |
+| Tier | Free | Free (Pro is a prod-only requirement) |
+
+Staging was built **exclusively** from `supabase/migrations/` (schema fingerprints — columns, policies, functions, triggers, indexes, constraints — verified identical to dev on 2026-07-17; dev's residual hand-applied drift converged via `20260717025906_converge_legacy_dev_drift.sql`). `plan_catalog` seeded with the four Stripe **test** prices; RLS anon-test 21/21 green; security advisors clean.
+
+The original 2026-07-03 read-only inspection of dev follows (historical — key finding 1 is since resolved: both projects' `supabase_migrations.schema_migrations` now match the repo exactly, and the 21 hand-applied legacy files were deleted from the repo on 2026-07-17).
 
 **Data volume (dev-scale, matches D16's "founder data only"):** 4 auth users, 4 profiles, 9 accounts, 531 transactions, 3 Plaid tokens, 30 balance snapshots, 43 sync jobs, 164 usage-counter rows. 20 tables in `public`, all with RLS enabled.
 
@@ -31,7 +36,7 @@ Read-only inspection of the Supabase, Vercel, and Stripe environments connected 
    These are folded into Phase 2.1 (baseline policies) and Phase 5.9 (project config).
 5. **Plan tier / backups:** the project is on the free tier posture assumed by the audit (Pro base is a Gate B requirement for the *prod* project; PITR is deferred to the first real Plaid invoice per DATA-8; the dev project can stay free).
 
-**Gap to target:** staging and prod projects do not exist; no CLI migration management; advisor cleanup pending. All planned (Phases 2, 5).
+**Gap to target (updated 2026-07-17):** ~~staging~~ (✅ exists, built from migrations alone) and **prod** project does not exist yet (Phase 5.2, Pro base); CLI migration management ✅ in place (repo `supabase/migrations/` is the single source; ledgers match on dev + staging); advisor cleanup ✅ done for schema-level findings (project-config items like leaked-password protection remain Phase 5.9).
 
 ## Vercel
 
@@ -86,7 +91,7 @@ Read-only inspection of the Supabase, Vercel, and Stripe environments connected 
 
 | Prepared | Missing |
 |---|---|
-| Supabase dev project healthy, RLS on, FKs correct live | Staging + prod projects; CLI migrations; advisor cleanup; Pro base (prod; PITR deferred to first Plaid invoice) |
+| Supabase dev + staging projects healthy, RLS on, FKs correct, migrations = single repo source (2026-07-17) | Prod project; Pro base (prod; PITR deferred to first Plaid invoice); project-config advisor items (5.9) |
 | `tmm.finance` owned and attached | `api.tmm.finance`; always-on backend hosts; deploy pipeline |
 | Stripe test mode wired to code patterns (customer metadata linking); pricing floor computed with real Plaid rates | Full catalog (2 products × 2 intervals); founder-confirmed final prices; live-mode setup; webhook re-registration |
 | Plaid production approved (D20); real contract rates known | Webhook URL registration to stable domain; SEC-1 verification before prod traffic; account-cap / item-cap decision |
@@ -94,5 +99,5 @@ Read-only inspection of the Supabase, Vercel, and Stripe environments connected 
 
 ## Access notes for the AI workforce
 
-- This workspace's MCP integrations: Supabase (full management API for the org — treat `apply_migration`/`execute_sql` writes as **dev-project-only** until staging exists), Vercel (team-scoped read/deploy), Stripe (**test mode only**; live keys are not exposed here, which is correct and should stay that way — live-mode operations remain a founder-in-dashboard task).
+- This workspace's MCP integrations: Supabase (full management API for the org — free writes on **dev** only; **staging** (`wekawukfpdqinesbltnx`) takes writes only via merged migrations; **prod** never via MCP), Vercel (team-scoped read/deploy), Stripe (**test mode only**; live keys are not exposed here, which is correct and should stay that way — live-mode operations remain a founder-in-dashboard task).
 - Standing rule for all agents (mirrored in `tmm-workforce/operating-rules.md`): read-only inspection of any environment is always allowed; writes to staging require a passing migration PR; writes to prod happen only through the deploy pipeline, never through MCP tools directly.

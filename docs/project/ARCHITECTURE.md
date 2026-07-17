@@ -75,7 +75,7 @@ TMM requires just-in-time consent before initiating Plaid Link:
 
 - Backend endpoints: `GET /api/privacy/consent-status`, `POST /api/privacy/consent`
 - Frontend gate: `frontend/src/features/accountIntegration/AccountIntegrationScreen.tsx`
-- Storage: `privacy_consents` table (migration `backend/supabase/migrations/014_privacy_consent_and_deletion.sql`)
+- Storage: `privacy_consents` table (defined in the canonical baseline `supabase/migrations/20260706185451_baseline.sql`)
 
 ## Data stores (what lives where)
 
@@ -113,7 +113,7 @@ TMM supports exporting/persisting plan data to Google Sheets using user-authoriz
 RLS is enabled broadly. The system intentionally separates **user-visible app state** from **sensitive financial data**:
 
 - The browser uses the Supabase **public** key and only reads/writes limited user-owned state (notably `profiles`).
-- Sensitive financial tables (`accounts`, `transactions`, `plaid_tokens`, legacy `users`) have an explicit **deny** policy for `anon` to fail loudly if the client ever attempts access (`backend/supabase/migrations/002_add_anon_policies.sql`).
+- Every table has an explicit **deny** policy for `anon` to fail loudly if the client ever attempts access, plus wholesale anon grant revocation (`supabase/migrations/20260706185451_baseline.sql` + `20260706190549_harden_grants.sql`).
 - The backend uses the Supabase **service role** (server-only) to perform financial sync and operational tasks.
 
 ## Plaid integration architecture (current)
@@ -145,7 +145,7 @@ These endpoints are authenticated and tier-gated (JWT + `requireTmmPlus`).
 TMM’s primary production-grade mechanism is **Plaid Transactions Sync**:
 
 - `POST /api/plaid/transactions/sync` (sync one `item_id` or all items for a user)
-- Uses durable cursoring and idempotency/observability via `plaid_sync_runs` (migration `backend/supabase/migrations/012_history_integration.sql`).
+- Uses durable cursoring and idempotency/observability via `plaid_sync_runs` (defined in the canonical baseline `supabase/migrations/20260706185451_baseline.sql`).
 - Writes into `accounts` and `transactions` tables (server-side).
 
 Optional retrieval paths:
@@ -160,7 +160,7 @@ TMM exposes a server-only webhook endpoint:
 - `POST /api/webhooks/plaid`
 - Explicitly rejects any `Authorization: Bearer` user tokens on webhook routes.
 - Supports a lightweight shared-secret header guard (`PLAID_WEBHOOK_SECRET` via `x-plaid-webhook-secret`).
-- Stores every webhook durably in `plaid_webhook_events` with deduplication (migration `backend/supabase/migrations/013_plaid_webhook_events_and_item_status.sql`).
+- Stores every webhook durably in `plaid_webhook_events` with deduplication (defined in the canonical baseline `supabase/migrations/20260706185451_baseline.sql`).
 - On `TRANSACTIONS / SYNC_UPDATES_AVAILABLE`, schedules a debounced sync for the item.
 - Tracks item health / update-mode requirements in `plaid_item_status` to drive frontend UX (reconnect/update flows).
 

@@ -43,28 +43,30 @@ Complete guide for setting up Supabase for the TMM Plaid Backend.
 
 ## Step 3: Create Database Schema
 
-1. In Supabase Dashboard, go to **SQL Editor**
-2. Click **New Query**
-3. Copy and paste the contents of `supabase/migrations/001_initial_schema.sql`
-4. Click **Run** (or press `Ctrl+Enter`)
-5. Verify tables were created:
-   - Go to **Table Editor**
-   - You should see: `users`, `plaid_tokens`, `accounts`, `transactions`
+The entire schema is defined by the canonical migration chain in `supabase/migrations/`
+(starting at `20260706185451_baseline.sql`). Any environment must be rebuilt from these
+files alone — never hand-applied SQL.
 
-## Step 4: Configure Row Level Security (RLS)
+Apply them in filename order, either:
 
-The migration script creates basic RLS policies. For production with user authentication:
+- **Supabase CLI** (preferred): `supabase link --project-ref <ref>` then `supabase db push`
+- **MCP `apply_migration`** (agent workflow): apply each file verbatim, in order
 
-1. Go to **Authentication** > **Policies**
-2. Update policies to use `auth.uid()` instead of allowing all access
-3. Example policy for users table:
-   ```sql
-   CREATE POLICY "Users can view own data" 
-   ON users FOR SELECT 
-   USING (auth.uid() = id);
-   ```
+Verify afterwards: **Table Editor** should show ~30 tables (`profiles`, `plaid_tokens`,
+`accounts`, `transactions`, `plans`, `plan_catalog`, ...), and
+`supabase migration list` should match the repo files exactly.
 
-**Note**: For now, the service role key bypasses RLS, which is appropriate for server-side operations. When implementing user authentication, update policies accordingly.
+## Step 4: Row Level Security (RLS)
+
+RLS is fully defined by the migrations — there is no manual policy step:
+
+- every table has RLS enabled with an explicit `anon_deny_all` policy
+- authenticated users get strict own-row policies (`auth.uid()` scoping)
+- token vault tables (`plaid_tokens`, `google_sheets_tokens`) and all Phase 4
+  billing/ops tables are service-role-only (no authenticated access at all)
+
+After setup, run `node tests/security/rls-anon-test.js` (with `SUPABASE_URL` +
+`SUPABASE_PUBLISHABLE_KEY` pointed at the project) to prove anon is locked out.
 
 ## Step 5: Configure Environment Variables
 

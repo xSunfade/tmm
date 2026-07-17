@@ -85,8 +85,9 @@ One scheduled sweep (host cron hitting an admin endpoint, or `pg_cron` on Supaba
 dev (mkhmaqksodfwccheflpw, existing)
   Phase 2: baseline authored → dev reset/rebuilt from baseline
   Phases 2–4: feature migrations land on dev via PR + CI shadow-apply
-staging (new, Phase 5.1 — created mid-Phase 4 when integration tests need it)
-  receives the full migration set from zero (proves reproducibility)
+staging (tmm-staging wekawukfpdqinesbltnx — ✅ created 2026-07-17, Phase 5.1)
+  received the full migration set from zero (reproducibility PROVEN: schema
+  fingerprints matched dev; drift converged via 20260717025906; RLS anon 21/21)
   hosts Stripe test-mode + Plaid sandbox integration runs, RLS scheduled tests
 prod (new, Phase 5.2, Gate B)
   born from the migration set; Supabase Pro (base) on before any real user; PITR deferred to the first real Plaid invoice (DATA-8)

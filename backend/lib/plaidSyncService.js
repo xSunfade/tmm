@@ -54,6 +54,7 @@ import {
   isPlaidFailureForBreaker
 } from './plaidErrorUtils.js';
 import { dateToIsoDate, shiftIsoDateByDays, parseIsoTimestamp, isFutureIso } from './serverUtils.js';
+import { isPlaidSuspendedForUser } from './plaidLifecycle.js';
 
 export const PLAID_SYNC_PAGE_SIZE = 500;
 export const DEFAULT_BACKFILL_DAYS = Number(process.env.PLAID_TRANSACTIONS_BACKFILL_DAYS || 10);
@@ -493,6 +494,18 @@ export async function enqueueSyncForItem({
   payload = {},
   delayMs = 0
 }) {
+  // ADR-6: suspended users get no new sync jobs (webhooks are acknowledged
+  // but not enqueued; scheduled/manual triggers no-op).
+  if (await isPlaidSuspendedForUser(userId)) {
+    console.log(JSON.stringify({
+      type: 'plaid_sync_skipped_suspended',
+      userId,
+      itemId: itemId || null,
+      trigger,
+      timestamp: new Date().toISOString()
+    }));
+    return { job_id: null, skipped: true, reason: 'suspended' };
+  }
   if (!PLAID_SYNC_USE_QUEUE) {
     const result = await syncTransactionsForItem(itemId, userId, {
       forceRefresh: !!payload.force_refresh
@@ -571,6 +584,16 @@ export async function processPlaidSyncJob(job, workerId) {
     err.noRetry = true;
     throw err;
   }
+  // ADR-6: jobs enqueued before a suspension landed must not run after it.
+  if (await isPlaidSuspendedForUser(userId)) {
+    return {
+      job_type: job.job_type,
+      worker_id: workerId,
+      skipped: true,
+      reason: 'suspended',
+      elapsed_ms: Date.now() - startedAtMs
+    };
+  }
   if (job.job_type === 'sync_all' || !itemId) {
     const payloadItemIds = Array.isArray(payload.item_ids) ? payload.item_ids.filter(Boolean) : [];
     const itemIds = payloadItemIds.length > 0 ? payloadItemIds : await listItemIdsForUser(userId);
@@ -610,10 +633,11 @@ export async function runScheduledTransactionsSync() {
   try {
     const { data: rows, error } = await supabaseAdmin
       .from('plaid_tokens')
-      .select('item_id,user_id');
+      .select('item_id,user_id,suspended_at');
     if (error) throw new Error(error.message);
 
     for (const row of rows || []) {
+      if (row.suspended_at) continue; // ADR-6: suspended items get no scheduled sync
       try {
         if (PLAID_SYNC_USE_QUEUE) {
           await enqueueSyncForItem({

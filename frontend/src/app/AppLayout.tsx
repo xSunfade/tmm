@@ -23,6 +23,13 @@ import { clearPlaidStepUpVerification } from '../lib/security/mfa';
 import { authFetch } from '../lib/api/authFetch';
 import { AppSpinner } from '../components/AppSpinner';
 import { usePlanSaveStatus } from './providers/planSaveStatus';
+import { isPaidTier, tierLabel } from '../lib/entitlements/tier';
+import {
+  fetchEntitlements,
+  joinTmmPlusWaitlist,
+  redeemInviteCode,
+  type EntitlementsResponse
+} from '../lib/entitlements/api';
 import type { ThemeId } from '../lib/theme/theme';
 import type { AppRoute } from './routing';
 
@@ -32,7 +39,7 @@ import type { AppRoute } from './routing';
  * device copy means losing edits now); the account backup state qualifies it.
  */
 function PlanSaveIndicator() {
-  const { local, server, serverSavedAt } = usePlanSaveStatus();
+  const { local, server, serverSavedAt, serverMessage } = usePlanSaveStatus();
 
   let dotClass = 'bg-emerald-400';
   let label = 'Saved · backed up to account';
@@ -59,6 +66,10 @@ function PlanSaveIndicator() {
     dotClass = 'bg-amber-400';
     label = 'Saved here · sync conflict';
     detail = 'Another device saved a newer version. Choose which to keep in the banner.';
+  } else if (server === 'limit_exceeded') {
+    dotClass = 'bg-amber-400';
+    label = 'Saved here · over plan limit';
+    detail = serverMessage || 'Your plan exceeds free-tier limits. Remove scenarios or upgrade to TMM+ to back it up.';
   } else if (server === 'disabled') {
     dotClass = 'bg-slate-400';
     label = 'Saved on this device';
@@ -103,7 +114,10 @@ export function AppLayout({ children }: AppLayoutProps) {
   const [sheetsToast, setSheetsToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [accountModalOpen, setAccountModalOpen] = useState(false);
   const [accountBillingError, setAccountBillingError] = useState<string | null>(null);
-  const [accountActionBusy, setAccountActionBusy] = useState<'upgrade' | 'manage' | null>(null);
+  const [accountActionBusy, setAccountActionBusy] = useState<'upgrade' | 'manage' | 'invite' | 'waitlist' | null>(null);
+  const [entitlements, setEntitlements] = useState<EntitlementsResponse | null>(null);
+  const [inviteCodeInput, setInviteCodeInput] = useState('');
+  const [inviteNotice, setInviteNotice] = useState<string | null>(null);
   const accountModalRef = useRef<HTMLDivElement>(null);
   const accountModalFirstFocusRef = useRef<HTMLButtonElement>(null);
   const accountModalLastFocusRef = useRef<HTMLButtonElement>(null);
@@ -371,6 +385,23 @@ export function AppLayout({ children }: AppLayoutProps) {
     }
   }, [refreshPlanTier]);
 
+  // Entitlement state for the dunning banner + invite/waitlist UI (Phase 4).
+  // Refreshed on sign-in and whenever the resolved tier changes (e.g. after
+  // checkout returns or a webhook lands).
+  useEffect(() => {
+    if (appState.auth.status !== 'authenticated' || !appState.auth.userId) {
+      setEntitlements(null);
+      return;
+    }
+    let cancelled = false;
+    fetchEntitlements().then((data) => {
+      if (!cancelled && data) setEntitlements(data);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [appState.auth.status, appState.auth.userId, appState.auth.planTier]);
+
   useEffect(() => {
     if (!accountModalOpen) return;
     const handleEscape = (e: KeyboardEvent) => {
@@ -422,6 +453,43 @@ export function AppLayout({ children }: AppLayoutProps) {
       window.location.assign(response.url);
     } catch (error) {
       setAccountBillingError(normalizeApiError(error, 'Unable to start Stripe checkout'));
+      setAccountActionBusy(null);
+    }
+  }
+
+  async function handleRedeemInvite() {
+    const code = inviteCodeInput.trim();
+    if (!code) return;
+    setInviteNotice(null);
+    setAccountActionBusy('invite');
+    try {
+      const result = await redeemInviteCode(code);
+      if (result.ok) {
+        setInviteNotice('Invite accepted — you can upgrade now.');
+        setInviteCodeInput('');
+        const refreshed = await fetchEntitlements();
+        if (refreshed) setEntitlements(refreshed);
+      } else {
+        setInviteNotice(result.message || 'Invite code could not be redeemed');
+      }
+    } finally {
+      setAccountActionBusy(null);
+    }
+  }
+
+  async function handleJoinWaitlist() {
+    setInviteNotice(null);
+    setAccountActionBusy('waitlist');
+    try {
+      const ok = await joinTmmPlusWaitlist();
+      if (ok) {
+        setInviteNotice("You're on the TMM+ waitlist — we'll email your invite.");
+        const refreshed = await fetchEntitlements();
+        if (refreshed) setEntitlements(refreshed);
+      } else {
+        setInviteNotice('Could not join the waitlist right now. Try again later.');
+      }
+    } finally {
       setAccountActionBusy(null);
     }
   }
@@ -509,14 +577,24 @@ export function AppLayout({ children }: AppLayoutProps) {
               className={`shrink-0 font-bold uppercase tracking-wide ${
                 appState.auth.planTier === null
                   ? 'text-slate-500'
-                  : appState.auth.planTier === 'tmm_plus'
+                  : isPaidTier(appState.auth.planTier)
                     ? 'text-emerald-400'
                     : 'text-slate-500'
               }`}
               style={{ fontSize: '1.4rem' }}
-              aria-label={appState.auth.planTier === null ? 'Loading plan' : appState.auth.planTier === 'tmm_plus' ? 'Plus plan' : 'Free plan'}
+              aria-label={
+                appState.auth.planTier === null
+                  ? 'Loading plan'
+                  : `${tierLabel(appState.auth.planTier)} plan`
+              }
             >
-              {appState.auth.planTier === null ? '…' : appState.auth.planTier === 'tmm_plus' ? 'PLUS' : 'FREE'}
+              {appState.auth.planTier === null
+                ? '…'
+                : appState.auth.planTier === 'tmm_pro'
+                  ? 'PRO'
+                  : appState.auth.planTier === 'tmm_plus'
+                    ? 'PLUS'
+                    : 'FREE'}
             </span>
           </div>
         </div>
@@ -790,7 +868,7 @@ export function AppLayout({ children }: AppLayoutProps) {
 
         <nav className="mt-6 space-y-1 text-sm">
           {navItems.map((item) => {
-            const isPlus = appState.auth.planTier === 'tmm_plus';
+            const isPlus = isPaidTier(appState.auth.planTier);
             const isLocked = Boolean(item.requiresPlus && !isPlus);
             const isActive = isRoute(pathname, item.key);
             const isAccountIntegration = item.key === 'account-integration';
@@ -1063,11 +1141,7 @@ export function AppLayout({ children }: AppLayoutProps) {
               <div className="mt-3 space-y-2 text-xs text-slate-300">
                 <div>
                   <span className="text-slate-500">Plan: </span>
-                  {appState.auth.planTier === null
-                    ? '…'
-                    : appState.auth.planTier === 'tmm_plus'
-                      ? 'TMM+'
-                      : 'Free'}
+                  {appState.auth.planTier === null ? '…' : tierLabel(appState.auth.planTier)}
                 </div>
                 {appState.auth.email ? (
                   <div>
@@ -1077,7 +1151,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                 ) : null}
               </div>
               <div className="mt-4 flex flex-col gap-2">
-                {appState.auth.planTier === 'tmm_plus' ? (
+                {isPaidTier(appState.auth.planTier) ? (
                   <button
                     ref={accountModalFirstFocusRef}
                     type="button"
@@ -1090,17 +1164,67 @@ export function AppLayout({ children }: AppLayoutProps) {
                     {accountActionBusy === 'manage' ? 'Opening…' : 'Manage subscription'}
                   </button>
                 ) : (
-                  <button
-                    ref={accountModalFirstFocusRef}
-                    type="button"
-                    disabled={accountActionBusy !== null || appState.auth.planTier === null}
-                    className="w-full rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-200 hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-400"
-                    onClick={() => {
-                      handleUpgradeToPlus();
-                    }}
-                  >
-                    {accountActionBusy === 'upgrade' ? 'Redirecting…' : 'Upgrade to TMM+'}
-                  </button>
+                  <>
+                    <button
+                      ref={accountModalFirstFocusRef}
+                      type="button"
+                      disabled={accountActionBusy !== null || appState.auth.planTier === null}
+                      className="w-full rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-200 hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-400"
+                      onClick={() => {
+                        handleUpgradeToPlus();
+                      }}
+                    >
+                      {accountActionBusy === 'upgrade' ? 'Redirecting…' : 'Upgrade to TMM+'}
+                    </button>
+                    {entitlements && !entitlements.invite.redeemed ? (
+                      <div className="rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2">
+                        <div className="text-[11px] text-slate-400">
+                          TMM+ is invite-based during early access.
+                        </div>
+                        <div className="mt-2 flex gap-2">
+                          <input
+                            type="text"
+                            value={inviteCodeInput}
+                            onChange={(e) => setInviteCodeInput(e.target.value)}
+                            placeholder="Invite code"
+                            aria-label="Invite code"
+                            className="min-w-0 flex-1 rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-slate-200 placeholder:text-slate-600"
+                          />
+                          <button
+                            type="button"
+                            disabled={accountActionBusy !== null || !inviteCodeInput.trim()}
+                            className="rounded border border-slate-700 px-2 py-1.5 text-xs text-slate-200 hover:bg-slate-800 disabled:cursor-not-allowed disabled:text-slate-500"
+                            onClick={() => {
+                              handleRedeemInvite();
+                            }}
+                          >
+                            {accountActionBusy === 'invite' ? '…' : 'Redeem'}
+                          </button>
+                        </div>
+                        {!entitlements.waitlist.joined ? (
+                          <button
+                            type="button"
+                            disabled={accountActionBusy !== null}
+                            className="mt-2 w-full rounded border border-slate-700 px-2 py-1.5 text-xs text-slate-300 hover:bg-slate-800 disabled:cursor-not-allowed disabled:text-slate-500"
+                            onClick={() => {
+                              handleJoinWaitlist();
+                            }}
+                          >
+                            {accountActionBusy === 'waitlist' ? 'Joining…' : 'Join the TMM+ waitlist'}
+                          </button>
+                        ) : (
+                          <div className="mt-2 text-[11px] text-emerald-300">
+                            You're on the waitlist ({entitlements.waitlist.status}).
+                          </div>
+                        )}
+                      </div>
+                    ) : null}
+                    {inviteNotice ? (
+                      <div className="rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-3 py-2 text-xs text-cyan-200">
+                        {inviteNotice}
+                      </div>
+                    ) : null}
+                  </>
                 )}
                 {accountBillingError ? (
                   <div className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
@@ -1184,7 +1308,33 @@ export function AppLayout({ children }: AppLayoutProps) {
         </div>
       </aside>
 
-      <main className="flex-1">{children}</main>
+      <main className="flex-1">
+        {entitlements?.subscription.status === 'past_due' ? (
+          <div
+            className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-500/40 bg-amber-500/10 px-4 py-2.5 text-xs text-amber-100"
+            role="alert"
+            data-testid="dunning-banner"
+          >
+            <span>
+              <span className="font-semibold">Payment issue:</span> your last TMM+ payment failed.
+              {entitlements.subscription.grace_expires_at
+                ? ` Update your card to keep TMM+ — access continues until ${new Date(entitlements.subscription.grace_expires_at).toLocaleDateString()}.`
+                : ' Update your card to keep TMM+.'}
+            </span>
+            <button
+              type="button"
+              disabled={accountActionBusy !== null}
+              className="rounded border border-amber-400/60 px-2.5 py-1 font-semibold text-amber-100 hover:bg-amber-500/20 disabled:cursor-not-allowed"
+              onClick={() => {
+                handleManageSubscription();
+              }}
+            >
+              {accountActionBusy === 'manage' ? 'Opening…' : 'Update payment method'}
+            </button>
+          </div>
+        ) : null}
+        {children}
+      </main>
 
       {isSyncing ? (
         <div

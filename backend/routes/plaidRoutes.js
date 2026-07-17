@@ -6,7 +6,7 @@
 import express from 'express';
 import config from '../config.js';
 import { plaidClient } from '../plaidClient.js';
-import { requireAuth, requireTmmPlus } from '../middleware/auth.js';
+import { requireAuth, requireTmmPlus, requireAdmin } from '../middleware/auth.js';
 import { createRateLimiter } from '../middleware/rateLimit.js';
 import { validateBody, schemas } from '../middleware/validation.js';
 import { supabaseAdmin } from '../supabaseClient.js';
@@ -69,6 +69,7 @@ import {
   isPlaidFailureForBreaker
 } from '../lib/plaidErrorUtils.js';
 import { getLocalDateString, isFutureIso, parseBooleanFlag } from '../lib/serverUtils.js';
+import { verifyPlaidWebhook } from '../lib/plaidWebhookVerify.js';
 import {
   PLAID_ALLOW_FORCE_REFRESH,
   PLAID_EXCHANGE_REQUIRE_LINK_INTENT,
@@ -156,7 +157,16 @@ function buildReconnectAccountIdMapping(oldAccounts, newPlaidAccounts) {
 
 const router = express.Router();
 
-// Plaid webhook endpoint (server-only, no user JWT).
+// SEC-1 / WH-P1: Plaid-Verification JWT check. Default ON in production;
+// disabling there requires an explicit env override (logged loudly at boot).
+const PLAID_WEBHOOK_VERIFY = parseBooleanFlag(process.env.PLAID_WEBHOOK_VERIFY, config.isProduction);
+if (config.isProduction && !PLAID_WEBHOOK_VERIFY) {
+  console.warn('⚠️  PLAID_WEBHOOK_VERIFY is disabled in production — Plaid webhooks are NOT authenticated. This must be a deliberate, temporary override.');
+}
+
+// Plaid webhook endpoint (server-only, no user JWT). Receives the RAW body
+// (server.js registers express.raw for this path) so the Plaid-Verification
+// JWT's request_body_sha256 can be checked against the exact bytes.
 router.post('/api/webhooks/plaid', webhookRateLimit, async (req, res, next) => {
   try {
     const requestId = req.requestId || 'unknown';
@@ -165,7 +175,38 @@ router.post('/api/webhooks/plaid', webhookRateLimit, async (req, res, next) => {
       return res.status(403).json({ error: 'Webhook endpoint does not accept user authentication' });
     }
 
-    const payload = req.body || {};
+    const rawBody = Buffer.isBuffer(req.body)
+      ? req.body
+      : Buffer.from(typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {}), 'utf8');
+
+    // Verification precedes ALL processing (USER_PERMISSION_REVOKED deletes
+    // tokens/accounts; a forged webhook must never reach that code).
+    if (PLAID_WEBHOOK_VERIFY) {
+      const verification = await verifyPlaidWebhook({
+        token: String(req.headers['plaid-verification'] || ''),
+        rawBody
+      });
+      if (!verification.ok) {
+        console.warn(JSON.stringify({
+          type: 'webhook_plaid_rejected',
+          requestId,
+          reason: verification.reason,
+          timestamp: new Date().toISOString()
+        }));
+        return res.status(401).json({ error: 'Webhook verification failed' });
+      }
+    }
+
+    let payload = {};
+    if (Buffer.isBuffer(req.body) || typeof req.body === 'string') {
+      try {
+        payload = JSON.parse(rawBody.toString('utf8'));
+      } catch {
+        return res.status(400).json({ error: 'Invalid webhook payload' });
+      }
+    } else {
+      payload = req.body || {};
+    }
     const webhookType = payload.webhook_type;
     const webhookCode = payload.webhook_code;
     const itemId = payload.item_id;
@@ -236,7 +277,7 @@ router.post('/api/webhooks/plaid', webhookRateLimit, async (req, res, next) => {
       try {
         await removeToken(itemId, userId);
       } catch (err) {
-        console.warn(`[plaid] removeToken on revocation for ${itemId}:`, err?.message || err);
+        console.warn('[plaid] removeToken on revocation for %s:', itemId, err?.message || err);
       }
       const itemAccounts = await getAccountsByUserAndItemId(userId, itemId);
       for (const acc of itemAccounts) {
@@ -249,7 +290,7 @@ router.post('/api/webhooks/plaid', webhookRateLimit, async (req, res, next) => {
       try {
         await deleteAccountsByUserAndItemId(userId, itemId);
       } catch (err) {
-        console.warn(`[plaid] deleteAccountsByUserAndItemId on revocation for ${itemId}:`, err?.message || err);
+        console.warn('[plaid] deleteAccountsByUserAndItemId on revocation for %s:', itemId, err?.message || err);
       }
       await upsertPlaidItemStatus({
         userId,
@@ -314,6 +355,14 @@ router.post(
     const userId = req.userId;
 
     if (!req.body?.update_item_id) {
+      // Per-tier item cap (D8): from tier_entitlements via requireTmmPlus
+      // (req.entitlements), bounded by the absolute anti-abuse ceiling. The
+      // legacy PLAID_ITEM_CAP env is only a fallback if resolution failed.
+      const tierCap = Number(req.entitlements?.entitlements?.maxPlaidItems);
+      const itemCap = Math.min(
+        Number.isFinite(tierCap) && tierCap > 0 ? tierCap : PLAID_ITEM_CAP,
+        PLAID_ITEM_SAFETY_CEILING
+      );
       const connectedItemIds = await listItemIdsForUser(userId);
       const currentCount = connectedItemIds.length;
       if (currentCount >= PLAID_ITEM_SAFETY_CEILING) {
@@ -333,21 +382,22 @@ router.post(
           cap: PLAID_ITEM_SAFETY_CEILING
         });
       }
-      if (currentCount >= PLAID_ITEM_CAP) {
+      if (currentCount >= itemCap) {
         console.warn(JSON.stringify({
           type: 'plaid_item_cap_hit',
           requestId: req.requestId || 'unknown',
           userId,
-          hitType: 'user_cap',
+          hitType: 'tier_cap',
+          tier: req.entitlements?.tier || null,
           currentCount,
-          cap: PLAID_ITEM_CAP,
+          cap: itemCap,
           timestamp: new Date().toISOString()
         }));
         return res.status(403).json({
-          error: `You've reached the ${PLAID_ITEM_CAP} connection limit. Disconnect an institution to add another.`,
+          error: `You've reached the ${itemCap} connection limit for your plan. Disconnect an institution or upgrade to add another.`,
           code: 'PLAID_ITEM_CAP_REACHED',
           current_count: currentCount,
-          cap: PLAID_ITEM_CAP
+          cap: itemCap
         });
       }
     }
@@ -451,7 +501,7 @@ router.get('/api/plaid/item-status', requireAuth, requireTmmPlus, async (req, re
   }
 });
 
-router.get('/api/ops/plaid/health', requireAuth, requireTmmPlus, async (req, res, next) => {
+router.get('/api/ops/plaid/health', requireAuth, requireAdmin, async (req, res, next) => {
   try {
     const userId = req.userId;
     const sinceIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
@@ -507,7 +557,7 @@ router.get('/api/ops/plaid/health', requireAuth, requireTmmPlus, async (req, res
   }
 });
 
-router.get('/api/ops/plaid/jobs', requireAuth, requireTmmPlus, async (req, res, next) => {
+router.get('/api/ops/plaid/jobs', requireAuth, requireAdmin, async (req, res, next) => {
   try {
     const status = req.query?.status ? String(req.query.status) : null;
     const limit = req.query?.limit ? Number(req.query.limit) : 100;
@@ -519,7 +569,7 @@ router.get('/api/ops/plaid/jobs', requireAuth, requireTmmPlus, async (req, res, 
   }
 });
 
-router.post('/api/ops/plaid/dev/webhook-smoke', requireAuth, requireTmmPlus, async (req, res, next) => {
+router.post('/api/ops/plaid/dev/webhook-smoke', requireAuth, requireAdmin, async (req, res, next) => {
   try {
     if (config.env === 'production') {
       return res.status(403).json({ error: 'Not available in production runtime' });
@@ -651,7 +701,7 @@ router.get('/api/plaid/sync/status', requireAuth, requireTmmPlus, async (req, re
   }
 });
 
-router.get('/api/ops/plaid/breaker', requireAuth, requireTmmPlus, async (req, res, next) => {
+router.get('/api/ops/plaid/breaker', requireAuth, requireAdmin, async (req, res, next) => {
   try {
     const breaker = await getPlaidCircuitBreaker();
     res.json({ breaker });

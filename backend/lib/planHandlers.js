@@ -94,11 +94,18 @@ export function createGetPlanHandler({ supabaseAdmin }) {
   };
 }
 
+/** Count the scenario alternatives in a plan document (D8 free-tier limit). */
+export function countPlanAlternatives(plan) {
+  if (!isPlainObject(plan) || !isPlainObject(plan.alternatives)) return 0;
+  return Object.keys(plan.alternatives).length;
+}
+
 export function createPutPlanHandler({
   supabaseAdmin,
   warnBytes = PLAN_SIZE_WARN_BYTES,
   maxBytes = PLAN_SIZE_MAX_BYTES,
   revisionKeep = PLAN_REVISION_KEEP,
+  resolveEntitlements = null, // (userId) => resolved entitlements (D8 limits)
   logger = console
 }) {
   return async function putPlanHandler(req, res, next) {
@@ -139,11 +146,42 @@ export function createPutPlanHandler({
 
       const { data: existing, error: readError } = await supabaseAdmin
         .from('plans')
-        .select('client_saved_at, updated_at')
+        .select('client_saved_at, updated_at, plan')
         .eq('user_id', req.userId)
         .maybeSingle();
       if (readError) {
         return res.status(500).json({ error: 'Failed to load plan', message: readError.message });
+      }
+
+      // Free-tier limit enforcement (Phase 4.5 / D8): free saves may not ADD
+      // alternatives beyond the limit. Existing over-limit content (e.g.
+      // after a downgrade) stays readable and trimmable — we only reject
+      // saves that grow the count while over the cap (D9: never delete or
+      // lock the user out of reducing).
+      if (resolveEntitlements) {
+        try {
+          const resolved = await resolveEntitlements(req.userId);
+          const maxAlternatives = resolved?.entitlements?.maxAlternatives;
+          if (maxAlternatives != null) {
+            const nextCount = countPlanAlternatives(plan);
+            const existingCount = countPlanAlternatives(existing?.plan);
+            if (nextCount > maxAlternatives && nextCount > existingCount) {
+              return res.status(403).json({
+                error: 'Plan exceeds your tier limits',
+                message: `Your plan allows ${maxAlternatives} scenarios; this save has ${nextCount}. Remove scenarios or upgrade to TMM+.`,
+                code: 'tier_limit_exceeded',
+                limit: 'max_alternatives',
+                max: maxAlternatives,
+                count: nextCount
+              });
+            }
+          }
+        } catch (entErr) {
+          // Fail open for availability on the save path: losing user data to
+          // an entitlement-service hiccup is worse than a free save slipping
+          // through one cycle. The limit re-applies on the next save.
+          logger.warn?.('[plan] Entitlement check failed; allowing save', entErr.message);
+        }
       }
 
       // Conflict detection (D14): when the client tells us which server state

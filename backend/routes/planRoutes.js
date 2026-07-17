@@ -5,7 +5,7 @@
 // server.js (Phase 2.9 router split).
 
 import express from 'express';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, getEntitlementsForUser } from '../middleware/auth.js';
 import { supabaseAdmin } from '../supabaseClient.js';
 import {
   createGetPlanHandler,
@@ -27,7 +27,15 @@ const planRouteGuard = (req, res, next) => {
 const router = express.Router();
 
 router.get('/api/plan', requireAuth, planRouteGuard, createGetPlanHandler({ supabaseAdmin }));
-router.put('/api/plan', requireAuth, planRouteGuard, createPutPlanHandler({ supabaseAdmin }));
+router.put(
+  '/api/plan',
+  requireAuth,
+  planRouteGuard,
+  createPutPlanHandler({
+    supabaseAdmin,
+    resolveEntitlements: (userId) => getEntitlementsForUser(userId)
+  })
+);
 router.get('/api/plan/revisions', requireAuth, planRouteGuard, createListPlanRevisionsHandler({ supabaseAdmin }));
 router.get('/api/plan/revisions/:revisionId', requireAuth, planRouteGuard, createGetPlanRevisionHandler({ supabaseAdmin }));
 

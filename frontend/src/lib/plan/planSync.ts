@@ -19,6 +19,8 @@ export type ServerPlanResponse = {
 export type PlanPushResult =
   | { status: 'saved'; clientSavedAt: string | null; sizeWarning: boolean }
   | { status: 'conflict'; serverClientSavedAt: string | null }
+  /** Server actively refused the save (e.g. tier_limit_exceeded, D9) — NOT an offline condition. */
+  | { status: 'rejected'; code: string; message: string }
   | { status: 'error'; message: string };
 
 export type PlanRevisionSummary = {
@@ -123,6 +125,13 @@ export async function pushPlanToServer(
         status: 'conflict',
         serverClientSavedAt:
           typeof payload.server_client_saved_at === 'string' ? payload.server_client_saved_at : null
+      };
+    }
+    if (payload?.code === 'tier_limit_exceeded') {
+      return {
+        status: 'rejected',
+        code: 'tier_limit_exceeded',
+        message: typeof payload.message === 'string' ? payload.message : 'Plan exceeds your tier limits'
       };
     }
     const message = payload?.message

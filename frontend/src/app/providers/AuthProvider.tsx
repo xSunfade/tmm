@@ -4,11 +4,12 @@ import { resolveDevOverrides } from '../../dev/devOverrides';
 import { useAppDispatch, useAppState } from '../../state/appState';
 import { setActiveStorageUserId } from '../../lib/storage/userScopedStorage';
 
-async function fetchPlanTierFromDb(userId: string): Promise<'free' | 'tmm_plus'> {
+async function fetchPlanTierFromDb(userId: string): Promise<'free' | 'tmm_plus' | 'tmm_pro'> {
   try {
     const supabase = getSupabaseClient();
     const { data } = await supabase.from('profiles').select('plan_tier').eq('id', userId).maybeSingle();
-    return (data?.plan_tier === 'tmm_plus' ? 'tmm_plus' : 'free') as 'free' | 'tmm_plus';
+    const tier = data?.plan_tier;
+    return tier === 'tmm_plus' || tier === 'tmm_pro' ? tier : 'free';
   } catch {
     return 'free';
   }

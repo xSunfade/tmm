@@ -80,6 +80,47 @@ async function testAnonKeyRestrictions() {
       table: 'plaid_sync_runs',
       operation: 'select'
     },
+    // Phase 4 tables (entitlements/billing/lifecycle) — all service-role-only.
+    {
+      name: 'Anon key cannot read plan_catalog',
+      table: 'plan_catalog',
+      operation: 'select'
+    },
+    {
+      name: 'Anon key cannot read tier_entitlements',
+      table: 'tier_entitlements',
+      operation: 'select'
+    },
+    {
+      name: 'Anon key cannot read stripe_events',
+      table: 'stripe_events',
+      operation: 'select'
+    },
+    {
+      name: 'Anon key cannot read audit_log',
+      table: 'audit_log',
+      operation: 'select'
+    },
+    {
+      name: 'Anon key cannot read waitlist',
+      table: 'waitlist',
+      operation: 'select'
+    },
+    {
+      name: 'Anon key cannot read invites',
+      table: 'invites',
+      operation: 'select'
+    },
+    {
+      name: 'Anon key cannot read app_settings',
+      table: 'app_settings',
+      operation: 'select'
+    },
+    {
+      name: 'Anon key cannot read oauth_states',
+      table: 'oauth_states',
+      operation: 'select'
+    },
     {
       name: 'Anon key cannot insert into plaid_tokens',
       table: 'plaid_tokens',

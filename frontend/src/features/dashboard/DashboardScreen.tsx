@@ -12,6 +12,8 @@ import { createCheckpoint } from '../../lib/simulation/checkpoints';
 import { loadSimulationSettings, saveSimulationSettings } from '../../lib/simulation/simulationSettings';
 import { useAppState } from '../../state/appState';
 import { authFetch } from '../../lib/api/authFetch';
+import { isPaidTier } from '../../lib/entitlements/tier';
+import { resolveBackendBaseUrl } from '../../lib/api/backendBase';
 import { withResampledForecastSeed } from '../../lib/simulation/forecastSeed';
 import { getPlanSanityWarnings } from '../../lib/plan/sanityWarnings';
 import { runSimulationInWorker } from '../../lib/simulation/simulationWorkerHost';
@@ -38,6 +40,16 @@ export function DashboardScreen() {
   const appState = useAppState();
   const [summary, setSummary] = React.useState(() => loadSimulationSettings());
   const [monteCarloRuns, setMonteCarloRuns] = React.useState(DEFAULT_RUNS);
+
+  // D8: free tier projects up to 5 years. Client-enforced (runYears is a
+  // device-local setting, never part of the saved plan document); the select
+  // below disables longer horizons and this clamps a stale stored value.
+  const freeTierHorizonCapped = appState.auth.planTier === 'free';
+  React.useEffect(() => {
+    if (freeTierHorizonCapped && summary.runYears > 5) {
+      setSummary((prev) => ({ ...prev, runYears: 5 }));
+    }
+  }, [freeTierHorizonCapped, summary.runYears]);
   const [checkInDue, setCheckInDue] = React.useState(() => shouldShowCheckIn());
   const [showCheckInModal, setShowCheckInModal] = React.useState(false);
   const [eventsExpanded, setEventsExpanded] = React.useState(false);
@@ -166,7 +178,7 @@ export function DashboardScreen() {
 
   React.useEffect(() => {
     let cancelled = false;
-    const isPlus = appState.auth.planTier === 'tmm_plus';
+    const isPlus = isPaidTier(appState.auth.planTier);
     if (!isPlus) {
       setRemoteHistoricalSeries([]);
       return () => {
@@ -178,7 +190,7 @@ export function DashboardScreen() {
     const startDate = new Date(now);
     startDate.setUTCFullYear(now.getUTCFullYear() - Math.max(1, summary.runYears));
     fetchMergedHistoricalSeries({
-      plaidBaseUrl: planState.plaidConfig?.backendApiUrl || '',
+      plaidBaseUrl: resolveBackendBaseUrl(planState.plaidConfig?.backendApiUrl),
       altNames: Object.keys(planState.alternatives || {}),
       checkpointsByAlt: planState.checkpoints || {},
       startDate,
@@ -243,7 +255,7 @@ export function DashboardScreen() {
   const palette = ['#8b5cf6', '#22c55e', '#06b6d4', '#f59e0b', '#ef4444'];
   const effectiveHistoricalSeries = React.useMemo(
     () =>
-      appState.auth.planTier === 'tmm_plus' && remoteHistoricalSeries.length > 0
+      isPaidTier(appState.auth.planTier) && remoteHistoricalSeries.length > 0
         ? remoteHistoricalSeries
         : simulation.historicalSeries,
     [appState.auth.planTier, remoteHistoricalSeries, simulation.historicalSeries]
@@ -292,9 +304,15 @@ export function DashboardScreen() {
                   }
                 >
                   <option value={5}>5 years</option>
-                  <option value={10}>10 years</option>
-                  <option value={20}>20 years</option>
-                  <option value={30}>30 years</option>
+                  <option value={10} disabled={freeTierHorizonCapped}>
+                    10 years{freeTierHorizonCapped ? ' (TMM+)' : ''}
+                  </option>
+                  <option value={20} disabled={freeTierHorizonCapped}>
+                    20 years{freeTierHorizonCapped ? ' (TMM+)' : ''}
+                  </option>
+                  <option value={30} disabled={freeTierHorizonCapped}>
+                    30 years{freeTierHorizonCapped ? ' (TMM+)' : ''}
+                  </option>
                 </select>
                 <select
                   className="dashboard-hero__select"
@@ -667,7 +685,7 @@ export function DashboardScreen() {
                   data-testid="reconciliation-action-accept-plaid"
                   className="rounded border border-emerald-500/50 px-2 py-1 text-xs text-emerald-200"
                   onClick={async () => {
-                    const base = (planState.plaidConfig?.backendApiUrl || '').replace(/\/$/, '');
+                    const base = resolveBackendBaseUrl(planState.plaidConfig?.backendApiUrl);
                     if (base) {
                       await authFetch(`${base}/api/history/reconciliation`, {
                         method: 'POST',
@@ -690,7 +708,7 @@ export function DashboardScreen() {
                   data-testid="reconciliation-action-keep-ledger"
                   className="rounded border border-cyan-500/50 px-2 py-1 text-xs text-cyan-200"
                   onClick={async () => {
-                    const base = (planState.plaidConfig?.backendApiUrl || '').replace(/\/$/, '');
+                    const base = resolveBackendBaseUrl(planState.plaidConfig?.backendApiUrl);
                     if (base) {
                       await authFetch(`${base}/api/history/reconciliation`, {
                         method: 'POST',

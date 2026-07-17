@@ -20,12 +20,15 @@ import {
   runScheduledTransactionsSync
 } from './lib/plaidSyncService.js';
 import { runScheduledHistorySnapshots } from './lib/historyService.js';
+import { runGraceExpirySweep } from './lib/entitlementSweeps.js';
+import { revokeExpiredPlaidTokens } from './lib/plaidLifecycle.js';
 import stripeRoutes from './routes/stripeRoutes.js';
 import plaidRoutes from './routes/plaidRoutes.js';
 import googleRoutes from './routes/googleRoutes.js';
 import planRoutes from './routes/planRoutes.js';
 import privacyRoutes from './routes/privacyRoutes.js';
 import historyRoutes from './routes/historyRoutes.js';
+import entitlementRoutes from './routes/entitlementRoutes.js';
 
 const app = express();
 const PORT = config.port;
@@ -61,6 +64,8 @@ app.use(cors({
 }));
 // Stripe webhook signatures require the raw request body; register before JSON parsing.
 app.use('/api/webhooks/stripe', express.raw({ type: 'application/json' }));
+// Plaid webhook verification (SEC-1) hashes the exact raw body bytes; same treatment.
+app.use('/api/webhooks/plaid', express.raw({ type: 'application/json' }));
 // Plan documents can legitimately exceed the global body limit (D14: warn at
 // 1 MB, hard-reject above 5 MB in the handler). Route-scoped parser must run
 // before the global one; express.json() no-ops when the body is already parsed.
@@ -119,6 +124,7 @@ app.use(googleRoutes);
 app.use(planRoutes);
 app.use(privacyRoutes);
 app.use(historyRoutes);
+app.use(entitlementRoutes);
 
 // Apply error handling middleware
 app.use(errorHandler);
@@ -163,6 +169,27 @@ async function startServer() {
         console.log(`🧵 Plaid sync worker: enabled (poll ${pollMs}ms)`);
       } else {
         console.log('🧵 Plaid sync worker: disabled');
+      }
+
+      // Entitlement + Plaid lifecycle sweeps (Phase 4.4/4.8 — D11/D12):
+      // grace expiry -> downgrade + suspend; retention expiry -> revoke.
+      // Kill switch: RUN_ENTITLEMENT_SWEEPS=false.
+      const lifecycleSweepMinutes = Number(process.env.ENTITLEMENT_SWEEP_INTERVAL_MINUTES || 60);
+      const runLifecycleSweeps = String(process.env.RUN_ENTITLEMENT_SWEEPS || 'true').toLowerCase() !== 'false';
+      if (runLifecycleSweeps && Number.isFinite(lifecycleSweepMinutes) && lifecycleSweepMinutes > 0) {
+        const sweep = () => {
+          runGraceExpirySweep().catch((err) => {
+            console.error('Grace-expiry sweep failed:', err.message);
+          });
+          revokeExpiredPlaidTokens().catch((err) => {
+            console.error('Plaid revocation sweep failed:', err.message);
+          });
+        };
+        setInterval(sweep, lifecycleSweepMinutes * 60 * 1000);
+        sweep(); // run once at boot so restarts never extend a grace window
+        console.log(`🕒 Entitlement/lifecycle sweeps: every ${lifecycleSweepMinutes} minute(s)`);
+      } else {
+        console.log('🕒 Entitlement/lifecycle sweeps: disabled');
       }
 
       const snapshotIntervalMinutes = Number(process.env.HISTORY_SNAPSHOT_INTERVAL_MINUTES || 10080);

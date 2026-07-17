@@ -14,6 +14,8 @@ import { usePlanStore } from '../../lib/plan/planStore';
 import { applyManualOverride, revertToConnected, getEffectiveValue } from '../../lib/plan/overrideManager';
 import { useAppState } from '../../state/appState';
 import { navigateToRoute, dispatchNavigationEvent } from '../../app/routing';
+import { isPaidTier } from '../../lib/entitlements/tier';
+import { resolveBackendBaseUrl } from '../../lib/api/backendBase';
 import { AppSpinner } from '../../components/AppSpinner';
 import {
   challengeFactor,
@@ -154,7 +156,7 @@ export function AccountIntegrationScreen() {
   const { state: planState, dispatch } = usePlanStore();
   const appState = useAppState();
   const planTier = appState.auth.planTier;
-  const isTmmPlus = planTier === 'tmm_plus';
+  const isTmmPlus = isPaidTier(planTier);
   const formatCurrency = (value: number | null | undefined, currencyCode?: string) => {
     if (value === null || value === undefined || Number.isNaN(value)) return '—';
     try {
@@ -231,7 +233,7 @@ export function AccountIntegrationScreen() {
     });
   };
   const plaidBaseUrl = useMemo(
-    () => (planState.plaidConfig?.backendApiUrl || '').replace(/\/$/, ''),
+    () => resolveBackendBaseUrl(planState.plaidConfig?.backendApiUrl),
     [planState.plaidConfig?.backendApiUrl]
   );
   const plaidEnabled = Boolean(isTmmPlus && plaidBaseUrl);

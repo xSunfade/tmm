@@ -19,7 +19,7 @@
     "dev:all": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\" \"npm run dev:tunnel\""
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.90.1",
+    "@supabase/supabase-js": "^2.110.7",
     "@vercel/analytics": "^1.6.1",
     "dotenv": "^17.2.3",
     "plaid": "^21.0.0",

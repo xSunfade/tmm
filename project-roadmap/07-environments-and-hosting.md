@@ -55,7 +55,7 @@ Hard rules:
 | `tmm.finance` | Attached to Vercel `tmm-frontend` ✔ | Keep; becomes prod frontend |
 | `api.tmm.finance` | Does not exist | DNS + TLS at Phase 5.4 |
 | Backend hosting | Vercel `tmm-backend` (serverless, Express preset; last deploy Jan 2026) | Provision Render staging+prod (5.3); demote Vercel project to dev |
-| Supabase | 1 project = de-facto dev | Keep as dev; create staging (5.1) + prod (5.2) |
+| Supabase | dev `mkhmaqksodfwccheflpw` + staging `tmm-staging` `wekawukfpdqinesbltnx` (✅ 5.1 done 2026-07-17, born from `supabase/migrations/` alone) | Create prod (5.2, Pro base) |
 | Stripe | Test mode; 1 product ($5/mo) | Rebuild catalog per pricing floor (4.6); live mode at Gate B |
 | Deploy pipeline | None (manual deploys inferred) | GitHub Actions: CI green → deploy backend → smoke → deploy frontend (5.5) |
 | Rollback | None | Previous-build redeploy, rehearsed (5.5); DB migrations backward-compatible per release |

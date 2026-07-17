@@ -66,7 +66,7 @@ Use this file as the canonical response packet. Attach screenshots and exports r
 - Controls:
   - Privacy policy: `docs/security/PRIVACY_POLICY.md`
   - Retention/deletion policy: `docs/security/DATA_RETENTION_AND_DELETION_POLICY.md`
-  - Consent + deletion migration: `backend/supabase/migrations/014_privacy_consent_and_deletion.sql`
+  - Consent + deletion schema: `privacy_consents` / `data_deletion_requests` in `supabase/migrations/20260706185451_baseline.sql`
   - Consent/deletion model: `backend/models/privacy.js`
   - API endpoints: `backend/server.js` (`/api/privacy/consent-status`, `/api/privacy/consent`, `/api/privacy/delete-account`)
   - Frontend consent modal + deletion UX:

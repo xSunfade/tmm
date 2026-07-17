@@ -277,7 +277,7 @@ router.post('/api/webhooks/plaid', webhookRateLimit, async (req, res, next) => {
       try {
         await removeToken(itemId, userId);
       } catch (err) {
-        console.warn(`[plaid] removeToken on revocation for ${itemId}:`, err?.message || err);
+        console.warn('[plaid] removeToken on revocation for %s:', itemId, err?.message || err);
       }
       const itemAccounts = await getAccountsByUserAndItemId(userId, itemId);
       for (const acc of itemAccounts) {
@@ -290,7 +290,7 @@ router.post('/api/webhooks/plaid', webhookRateLimit, async (req, res, next) => {
       try {
         await deleteAccountsByUserAndItemId(userId, itemId);
       } catch (err) {
-        console.warn(`[plaid] deleteAccountsByUserAndItemId on revocation for ${itemId}:`, err?.message || err);
+        console.warn('[plaid] deleteAccountsByUserAndItemId on revocation for %s:', itemId, err?.message || err);
       }
       await upsertPlaidItemStatus({
         userId,

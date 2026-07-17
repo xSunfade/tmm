@@ -27,11 +27,19 @@ const waitlistJoinRateLimit = createRateLimiter({
   max: Number(process.env.WAITLIST_RATE_LIMIT_MAX || 10)
 });
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
+// Linear, backtracking-free email shape check (avoids js/polynomial-redos).
+// Not a full RFC validator — just enough to reject junk before we store it.
 function normalizeEmail(value) {
   const email = String(value || '').trim().toLowerCase();
-  return EMAIL_RE.test(email) && email.length <= 254 ? email : null;
+  if (email.length < 3 || email.length > 254 || /\s/.test(email)) return null;
+  const at = email.indexOf('@');
+  // exactly one '@', not at the start
+  if (at <= 0 || email.indexOf('@', at + 1) !== -1) return null;
+  const domain = email.slice(at + 1);
+  const dot = domain.indexOf('.');
+  // domain must contain a '.' that is neither first nor last char
+  if (dot <= 0 || dot === domain.length - 1) return null;
+  return email;
 }
 
 async function getFreeSignupSettings() {

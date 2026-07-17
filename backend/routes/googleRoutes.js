@@ -11,7 +11,22 @@ import {
   removeGoogleTokens
 } from '../storage/googleTokens.js';
 import { createOAuthState, consumeOAuthState } from '../lib/oauthState.js';
+import { createRateLimiter } from '../middleware/rateLimit.js';
 import { writeAuditLog } from '../lib/auditLog.js';
+
+// Abuse guards for the OAuth handshake. The callback is unauthenticated (it is
+// a browser redirect from Google) and performs a token exchange + DB writes, so
+// it gets a per-IP limiter; authorize is behind requireAuth but still capped.
+const oauthAuthorizeRateLimit = createRateLimiter({
+  id: 'google-oauth-authorize',
+  windowMs: 60_000,
+  max: Number(process.env.GOOGLE_OAUTH_AUTHORIZE_RATE_LIMIT_MAX || 20)
+});
+const oauthCallbackRateLimit = createRateLimiter({
+  id: 'google-oauth-callback',
+  windowMs: 60_000,
+  max: Number(process.env.GOOGLE_OAUTH_CALLBACK_RATE_LIMIT_MAX || 30)
+});
 
 function getGoogleConfigOrThrow() {
   if (!config.google.clientId || !config.google.clientSecret || !config.google.redirectUri) {
@@ -170,7 +185,7 @@ async function googleSheetsFetch(url, options = {}) {
 const router = express.Router();
 
 // Google OAuth - get authorization URL
-router.post('/api/google/oauth/authorize', requireAuth, async (req, res, next) => {
+router.post('/api/google/oauth/authorize', oauthAuthorizeRateLimit, requireAuth, async (req, res, next) => {
   try {
     const state = await createOAuthState(req.userId, { purpose: 'google_sheets' });
     const url = buildGoogleAuthUrl(state);
@@ -183,7 +198,7 @@ router.post('/api/google/oauth/authorize', requireAuth, async (req, res, next) =
 // Google OAuth callback. Unauthenticated by nature (browser redirect from
 // Google); the state nonce is the authentication — it must resolve to the
 // exact user who initiated the flow (SEC-3), exactly once.
-router.get('/api/google/oauth/callback', async (req, res, next) => {
+router.get('/api/google/oauth/callback', oauthCallbackRateLimit, async (req, res, next) => {
   try {
     const { code, state } = req.query;
     if (!code || !state) {

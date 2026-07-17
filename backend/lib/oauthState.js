@@ -24,9 +24,14 @@ const STATE_VERSION = 'v1';
 // secret is stable there.
 const ephemeralSecret = crypto.randomBytes(32).toString('hex');
 
+// Derive a dedicated 32-byte HMAC signing key from the configured secret via
+// HKDF. This is key derivation from a high-entropy secret (OAUTH_STATE_SECRET /
+// encryption key), NOT password hashing — HKDF is the correct primitive here.
 function getStateSecret() {
   const base = process.env.OAUTH_STATE_SECRET || config.encryption.key || ephemeralSecret;
-  return crypto.createHash('sha256').update(`tmm-oauth-state:${base}`).digest();
+  return Buffer.from(
+    crypto.hkdfSync('sha256', Buffer.from(base), Buffer.from('tmm-oauth-state'), Buffer.from('oauth-state-hmac-v1'), 32)
+  );
 }
 
 function signState(nonce, expEpochSeconds, purpose) {

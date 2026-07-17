@@ -13,8 +13,8 @@ export type AppState = {
     status: AuthStatus;
     userId?: string;
     email?: string;
-    /** null = loading (not yet fetched), 'free' | 'tmm_plus' = resolved */
-    planTier?: 'free' | 'tmm_plus' | null;
+    /** null = loading (not yet fetched); resolved tiers per D7 */
+    planTier?: 'free' | 'tmm_plus' | 'tmm_pro' | null;
   };
   onboarding: {
     needsOnboarding: boolean;
@@ -45,7 +45,7 @@ export type AppState = {
 
 export type AppAction =
   | { type: 'readiness'; key: keyof AppState['readiness']; value: boolean }
-  | { type: 'auth'; status: AuthStatus; userId?: string; email?: string; planTier?: 'free' | 'tmm_plus' | null }
+  | { type: 'auth'; status: AuthStatus; userId?: string; email?: string; planTier?: 'free' | 'tmm_plus' | 'tmm_pro' | null }
   | { type: 'onboarding'; needsOnboarding: boolean; resumeAvailable?: boolean }
   | { type: 'tour'; tourActive: boolean }
   | { type: 'restore'; available: boolean; reason?: string; meta?: RestoreMetadata }

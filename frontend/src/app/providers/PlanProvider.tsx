@@ -135,6 +135,15 @@ function PlanServerSyncGate({ children }: { children: React.ReactNode }) {
       } else if (result.status === 'conflict') {
         setConflict({ serverClientSavedAt: result.serverClientSavedAt });
         setSyncState({ status: 'conflict', savedAt: serverSavedAtRef.current });
+      } else if (result.status === 'rejected') {
+        // Tier limit (Phase 4.5/D9): the server refused this save. Local
+        // snapshot still holds the edits; the indicator explains why the
+        // account copy is behind and how to fix it.
+        setSyncState({
+          status: 'limit_exceeded',
+          savedAt: serverSavedAtRef.current,
+          message: result.message
+        });
       } else {
         // Offline / server down: local snapshot still saves; the indicator
         // shows local-only so the user knows the account copy is behind.

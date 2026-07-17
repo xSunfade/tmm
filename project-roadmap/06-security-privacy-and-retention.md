@@ -44,13 +44,17 @@ The Supabase security advisors on the dev project reported 70 warnings. These fo
 |---|---|---|
 | Financial plans, transactions, imported history, alternatives, pipeline layouts, categories, goals | **Indefinite** — until user deletes it or their account | — |
 | Plan revisions | Newest **20** per user | Prune on insert (live, `backend/lib/planHandlers.js`) |
-| Stripe webhook events (`stripe_events`) | **90 days** | Scheduled sweep |
+| Stripe webhook events (`stripe_events`) | **90 days** | ✅ `run_retention_sweeps()` |
 | Plaid webhook events | **90 days** | ✅ `run_retention_sweeps()` (pg_cron, daily 03:30 UTC) |
 | Sync execution logs (`plaid_sync_runs`, finished `plaid_sync_jobs`) | **30 days** | ✅ `run_retention_sweeps()` |
 | Plaid link intents | **90 days** | ✅ `run_retention_sweeps()` |
 | Rate-limit buckets (`usage_counters`) | **30 days** | ✅ `run_retention_sweeps()` |
 | Connection audit events (`plaid_connection_events`) | **1 year** | ✅ `run_retention_sweeps()` |
-| Audit/security logs (`audit_log`) | **1 year** | Scheduled sweep |
+| Audit/security logs (`audit_log`) | **1 year** | ✅ `run_retention_sweeps()` |
+| OAuth state nonces (`oauth_states`) | **Expiry + 1 day** (10-min TTL) | ✅ `run_retention_sweeps()` |
+| Waitlist entries (`waitlist`) | Indefinite until served/removed; cascade on account deletion | — |
+| Invite codes (`invites`) | Indefinite (redemptions are billing evidence); `redeemed_by` nulls on account deletion (documented exception) | — |
+| Catalog/entitlement config (`plan_catalog`, `tier_entitlements`, `app_settings`) | Indefinite (operational config, no user data) | — |
 | User-deleted plans/accounts | **30-day soft delete**, then permanent purge | Soft-delete flag + sweep |
 | Plaid access tokens | **30 days after premium access ends**; immediately on account deletion | Lifecycle sweep (ADR-6) |
 | Encrypted infrastructure backups (Supabase Pro daily backups; PITR once enabled at first Plaid invoice) | Provider's normal window; never used for account restoration | Supabase-managed |

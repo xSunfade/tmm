@@ -20,12 +20,16 @@ export type ServerSyncStatus =
   /** backend unreachable — local-only until a later session reconciles */
   | 'offline'
   /** 409: another device saved a newer version; user must choose */
-  | 'conflict';
+  | 'conflict'
+  /** 403 tier_limit_exceeded (Phase 4.5/D9): server refused the save; trim or upgrade */
+  | 'limit_exceeded';
 
 export type ServerSyncState = {
   status: ServerSyncStatus;
   /** client_saved_at of the last known-good server copy, if any */
   savedAt: string | null;
+  /** human-readable reason for limit_exceeded */
+  message?: string | null;
 };
 
 export const LocalSaveStatusContext = createContext<LocalSaveStatus>('saved');
@@ -38,10 +42,16 @@ export type PlanSaveStatus = {
   local: LocalSaveStatus;
   server: ServerSyncStatus;
   serverSavedAt: string | null;
+  serverMessage?: string | null;
 };
 
 export function usePlanSaveStatus(): PlanSaveStatus {
   const local = useContext(LocalSaveStatusContext);
   const server = useContext(ServerSyncStatusContext);
-  return { local, server: server.status, serverSavedAt: server.savedAt };
+  return {
+    local,
+    server: server.status,
+    serverSavedAt: server.savedAt,
+    serverMessage: server.message ?? null
+  };
 }

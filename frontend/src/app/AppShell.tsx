@@ -13,6 +13,8 @@ import { needsOnboarding } from '../features/onboarding/onboardingLogic';
 import { bootstrapLocalState, persistSheetsDismissed, persistSheetsOAuthDone } from '../state/localBootstrap';
  
 import { usePlanStore } from '../lib/plan/planStore';
+import { isPaidTier } from '../lib/entitlements/tier';
+import { resolveBackendBaseUrl } from '../lib/api/backendBase';
 import { loadPlanSnapshot, setRestoreDecline, getRestoreSnapshotId } from '../lib/plan/planPersistence';
 import { DEFAULT_PLAN_STATE } from '../lib/plan/defaults';
 import { createMonthlyCheckpointIfNeeded } from '../lib/simulation/checkpoints';
@@ -92,7 +94,7 @@ export function AppShell() {
   const isPrivacyRoute = isRoute(pathname, 'privacy');
   const search = window.location.search;
   const plaidBaseUrl = useMemo(
-    () => (planState.plaidConfig?.backendApiUrl || '').replace(/\/$/, ''),
+    () => resolveBackendBaseUrl(planState.plaidConfig?.backendApiUrl),
     [planState.plaidConfig?.backendApiUrl]
   );
   const plaidSyncAttemptRef = React.useRef<string | null>(null);
@@ -160,7 +162,7 @@ export function AppShell() {
 
   useEffect(() => {
     if (!state.readiness.authReady || state.auth.status !== 'authenticated') return;
-    if (!state.auth.userId || state.auth.planTier !== 'tmm_plus' || !plaidBaseUrl) return;
+    if (!state.auth.userId || !isPaidTier(state.auth.planTier) || !plaidBaseUrl) return;
     const key = `${state.auth.userId}:${plaidBaseUrl}`;
     if (plaidSyncAttemptRef.current === key) return;
     plaidSyncAttemptRef.current = key;
@@ -177,7 +179,7 @@ export function AppShell() {
 
   useEffect(() => {
     if (!state.readiness.authReady || state.auth.status !== 'authenticated') return;
-    if (!state.auth.userId || state.auth.planTier !== 'tmm_plus' || !plaidBaseUrl) {
+    if (!state.auth.userId || !isPaidTier(state.auth.planTier) || !plaidBaseUrl) {
       if (syncPollRunningRef.current) {
         syncPollRunningRef.current = false;
         dispatch({ type: 'plaid', syncRunning: false });
@@ -317,7 +319,7 @@ export function AppShell() {
   useEffect(() => {
     if (!state.readiness.authReady || state.auth.status !== 'authenticated') return;
     if (!isAccountIntegrationRoute) return;
-    if (state.auth.planTier === 'tmm_plus') return;
+    if (isPaidTier(state.auth.planTier)) return;
     navigateToRoute('dashboard');
   }, [
     isAccountIntegrationRoute,
@@ -564,7 +566,7 @@ export function AppShell() {
         <AppLayout>
           {isDashboardRoute ? <DashboardScreen /> : null}
           {isAccountsRoute ? <AccountsScreen /> : null}
-          {isAccountIntegrationRoute && state.auth.planTier === 'tmm_plus' ? <AccountIntegrationScreen /> : null}
+          {isAccountIntegrationRoute && isPaidTier(state.auth.planTier) ? <AccountIntegrationScreen /> : null}
           {isGoalsRoute ? <GoalsScreen /> : null}
           {isPipelineRoute ? <PipelineScreen /> : null}
           {isSimulationRoute ? <SimulationScreen /> : null}

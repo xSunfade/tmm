@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
 import type { Alternative } from '../../lib/plan/types';
 import { getEffectiveValue, applyManualOverride } from '../../lib/plan/overrideManager';
+import { isPaidTier, type PlanTier } from '../../lib/entitlements/tier';
 
 type WeeklyCheckInModalProps = {
   altName: string;
   alt: Alternative;
-  planTier?: 'free' | 'tmm_plus' | null;
+  planTier?: PlanTier | null;
   onApply: (nextAlt: Alternative) => void;
   onClose: () => void;
 };
@@ -35,10 +36,10 @@ export function WeeklyCheckInModal({ altName: _altName, alt, planTier, onApply, 
   const connectedCount = useMemo(() => rows.filter((row) => row.connected).length, [rows]);
 
   const automationNote = useMemo(() => {
-    if (planTier === 'tmm_plus' && connectedCount > 0) {
+    if (isPaidTier(planTier) && connectedCount > 0) {
       return `${connectedCount} of your ${rows.length} entries ${connectedCount === 1 ? 'is' : 'are'} synced automatically from your linked bank accounts — you only need to review the manual ones.`;
     }
-    if (planTier === 'tmm_plus') {
+    if (isPaidTier(planTier)) {
       return 'Tip: link your bank accounts in Account Integration and TMM will keep those balances updated automatically, so check-ins get much shorter.';
     }
     return 'Tip: with TMM+, linked bank accounts sync balances automatically — check-ins get shorter, or go away entirely. Upgrade from your account menu.';

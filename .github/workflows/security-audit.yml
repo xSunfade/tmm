@@ -48,3 +48,32 @@ jobs:
 
       - name: Run token encryption test
         run: node tests/security/token-encryption.test.js
+
+  # Scheduled RLS verification (Phase 4.14): the anon key must stay locked out
+  # of every table. Runs against the dev project on the weekly schedule; skips
+  # cleanly on PRs from forks or when secrets are not configured.
+  rls-anon-test:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Run RLS anon test
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_PUBLISHABLE_KEY" ]; then
+            echo "::warning::SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY secrets not configured; skipping RLS anon test"
+            exit 0
+          fi
+          node tests/security/rls-anon-test.js

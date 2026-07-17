@@ -3,6 +3,8 @@ import { getSupabaseClient } from '../../lib/supabaseClient';
 import { useAppState } from '../../state/appState';
 import { usePlanStore } from '../../lib/plan/planStore';
 import { authFetch } from '../../lib/api/authFetch';
+import { isPaidTier } from '../../lib/entitlements/tier';
+import { resolveBackendBaseUrl } from '../../lib/api/backendBase';
 import { getGoogleTokenStatus, disconnectGoogle, getGoogleAuthUrl, isGoogleTokenError } from '../../lib/sheets/api';
 import { clearAllAppData } from '../../lib/clearAppData';
 import { getStoredSheetId, clearStoredSheetId } from '../../lib/sheets/storage';
@@ -93,7 +95,7 @@ export function SettingsScreen() {
   const sheetsConnected = authState.sheets.connectionVerified ? authState.sheets.connected : false;
   const effectiveSheetId = authState.sheets.spreadsheetId ?? getStoredSheetId();
   const sheetsToken = useSheetsToken();
-  const backendApiBase = (planState.plaidConfig?.backendApiUrl || '').replace(/\/$/, '');
+  const backendApiBase = resolveBackendBaseUrl(planState.plaidConfig?.backendApiUrl);
 
   const handleLocalSignOut = async () => {
     clearPlaidStepUpVerification(authState.auth.userId);
@@ -760,7 +762,7 @@ export function SettingsScreen() {
 
         <section className="space-y-4 rounded-lg border border-slate-800 bg-slate-900/60 p-5">
           <h2 className="text-sm font-semibold text-slate-200">Plaid Integration (TMM+)</h2>
-          {authState.auth.planTier !== 'tmm_plus' ? (
+          {!isPaidTier(authState.auth.planTier) ? (
             <div className="rounded-lg border border-slate-700 bg-slate-900/50 p-3 text-xs text-slate-400">
               Plaid is available on TMM+. Upgrade to connect real bank accounts and configure Plaid here.
             </div>

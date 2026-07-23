@@ -12,7 +12,7 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.110.7",
     "react": "^19.2.0",
-    "react-dom": "^19.2.7",
+    "react-dom": "^19.2.8",
     "react-plaid-link": "^4.1.1",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },

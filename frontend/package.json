@@ -10,7 +10,7 @@
     "test:simulation": "tsx ../tests/simulation/simulation-validation.test.ts && tsx ../tests/simulation/checkpoint-drift.test.ts && tsx ../tests/simulation/position-semantics.test.ts && tsx ../tests/simulation/engine-edge-cases.test.ts && tsx ../tests/simulation/worker-host.test.ts && tsx ../tests/unit/plan-persistence.test.ts && tsx ../tests/unit/plan-migrations.test.ts"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.110.7",
+    "@supabase/supabase-js": "^2.110.8",
     "react": "^19.2.0",
     "react-dom": "^19.2.7",
     "react-plaid-link": "^4.1.1",
